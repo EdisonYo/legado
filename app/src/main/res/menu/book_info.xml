@@ -25,6 +25,11 @@
         app:showAsAction="never" />
 
     <item
+        android:id="@+id/menu_auto_task_book_update"
+        android:title="@string/auto_task_book_update"
+        app:showAsAction="never" />
+
+    <item
         android:id="@+id/menu_login"
         android:title="@string/login"
         app:showAsAction="never" />

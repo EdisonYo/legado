@@ -1,0 +1,165 @@
+package io.legado.app.ui.autoTask
+
+import android.annotation.SuppressLint
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.recyclerview.widget.RecyclerView
+import io.legado.app.R
+import io.legado.app.databinding.ItemAutoTaskGroupBinding
+import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.widget.code.addJsPattern
+import io.legado.app.ui.widget.code.addJsonPattern
+import io.legado.app.ui.widget.code.addLegadoPattern
+import io.legado.app.ui.widget.text.EditEntity
+
+class AutoTaskEditAdapter :
+    RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+    data class Section(
+        val key: String,
+        val title: String,
+        var expanded: Boolean = true,
+        val fields: List<EditEntity>
+    )
+
+    private sealed class Item {
+        data class Header(val section: Section) : Item()
+        data class Field(val sectionKey: String, val entity: EditEntity) : Item()
+    }
+
+    private val editEntityMaxLine = AppConfig.sourceEditMaxLine
+    private val sections = arrayListOf<Section>()
+    private val items = arrayListOf<Item>()
+
+    fun setSections(list: List<Section>) {
+        sections.clear()
+        sections.addAll(list)
+        rebuildItems()
+        notifyDataSetChanged()
+    }
+
+    private fun rebuildItems() {
+        items.clear()
+        sections.forEach { section ->
+            items.add(Item.Header(section))
+            if (section.expanded) {
+                section.fields.forEach { field ->
+                    items.add(Item.Field(section.key, field))
+                }
+            }
+        }
+    }
+
+    private fun toggleSection(key: String) {
+        sections.firstOrNull { it.key == key }?.let {
+            it.expanded = !it.expanded
+            rebuildItems()
+            notifyDataSetChanged()
+        }
+    }
+
+    override fun getItemCount(): Int = items.size
+
+    override fun getItemViewType(position: Int): Int {
+        return when (items[position]) {
+            is Item.Header -> R.layout.item_auto_task_group
+            is Item.Field -> R.layout.item_source_edit
+        }
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return when (viewType) {
+            R.layout.item_auto_task_group -> GroupHolder(
+                ItemAutoTaskGroupBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false
+                )
+            )
+
+            else -> {
+                val binding = ItemSourceEditBinding.inflate(
+                    LayoutInflater.from(parent.context),
+                    parent,
+                    false
+                )
+                binding.editText.addLegadoPattern()
+                binding.editText.addJsonPattern()
+                binding.editText.addJsPattern()
+                FieldHolder(binding)
+            }
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = items[position]) {
+            is Item.Header -> (holder as GroupHolder).bind(item.section)
+            is Item.Field -> (holder as FieldHolder).bind(item.entity)
+        }
+    }
+
+    inner class GroupHolder(
+        private val binding: ItemAutoTaskGroupBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(section: Section) = binding.run {
+            tvTitle.text = section.title
+            ivArrow.rotation = if (section.expanded) 0f else -90f
+            root.setOnClickListener { toggleSection(section.key) }
+        }
+    }
+
+    inner class FieldHolder(
+        private val binding: ItemSourceEditBinding
+    ) : RecyclerView.ViewHolder(binding.root) {
+
+        fun bind(editEntity: EditEntity) = binding.run {
+            editText.setTag(R.id.tag, editEntity.key)
+            editText.maxLines = editEntityMaxLine
+            if (editText.getTag(R.id.tag1) == null) {
+                val listener = object : View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(v: View) {
+                        editText.isCursorVisible = false
+                        editText.isCursorVisible = true
+                        editText.isFocusable = true
+                        editText.isFocusableInTouchMode = true
+                    }
+
+                    override fun onViewDetachedFromWindow(v: View) {
+                    }
+                }
+                editText.addOnAttachStateChangeListener(listener)
+                editText.setTag(R.id.tag1, listener)
+            }
+            editText.getTag(R.id.tag2)?.let {
+                if (it is TextWatcher) {
+                    editText.removeTextChangedListener(it)
+                }
+            }
+            editText.setText(editEntity.value)
+            textInputLayout.hint = editEntity.hint
+            val textWatcher = object : TextWatcher {
+                override fun beforeTextChanged(
+                    s: CharSequence,
+                    start: Int,
+                    count: Int,
+                    after: Int
+                ) {
+                }
+
+                override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {
+                }
+
+                override fun afterTextChanged(s: Editable?) {
+                    editEntity.value = (s?.toString())
+                }
+            }
+            editText.addTextChangedListener(textWatcher)
+            editText.setTag(R.id.tag2, textWatcher)
+        }
+    }
+}

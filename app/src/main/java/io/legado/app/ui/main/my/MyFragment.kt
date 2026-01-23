@@ -17,9 +17,11 @@ import io.legado.app.lib.prefs.NameListPreference
 import io.legado.app.lib.prefs.SwitchPreference
 import io.legado.app.lib.prefs.fragment.PreferenceFragment
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.service.AutoTaskService
 import io.legado.app.service.WebService
 import io.legado.app.ui.about.AboutActivity
 import io.legado.app.ui.about.ReadRecordActivity
+import io.legado.app.ui.autoTask.AutoTaskActivity
 import io.legado.app.ui.book.bookmark.AllBookmarkActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
 import io.legado.app.ui.book.toc.rule.TxtTocRuleActivity
@@ -33,7 +35,6 @@ import io.legado.app.utils.LogUtils
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.putPrefBoolean
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showHelp
@@ -78,7 +79,6 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
         SharedPreferences.OnSharedPreferenceChangeListener {
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-            putPrefBoolean(PreferKey.webService, WebService.isRun)
             addPreferencesFromResource(R.xml.pref_main)
             findPreference<SwitchPreference>("webService")?.onLongClick {
                 if (!WebService.isRun) {
@@ -137,6 +137,13 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                         WebService.stop(requireContext())
                     }
                 }
+                PreferKey.autoTaskService -> {
+                    if (requireContext().getPrefBoolean(PreferKey.autoTaskService)) {
+                        AutoTaskService.start(requireContext())
+                    } else {
+                        AutoTaskService.stop(requireContext())
+                    }
+                }
 
                 "recordLog" -> LogUtils.upLevel()
             }
@@ -148,6 +155,7 @@ class MyFragment() : BaseFragment(R.layout.fragment_my_config), MainFragmentInte
                 "replaceManage" -> startActivity<ReplaceRuleActivity>()
                 "dictRuleManage" -> startActivity<DictRuleActivity>()
                 "txtTocRuleManage" -> startActivity<TxtTocRuleActivity>()
+                "autoTaskManage" -> startActivity<AutoTaskActivity>()
                 "bookmark" -> startActivity<AllBookmarkActivity>()
                 "setting" -> startActivity<ConfigActivity> {
                     putExtra("configTag", ConfigTag.OTHER_CONFIG)

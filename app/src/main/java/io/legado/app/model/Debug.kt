@@ -83,6 +83,13 @@ object Debug {
         }
     }
 
+    @Synchronized
+    fun startSimpleDebug(sourceUrl: String) {
+        cancelDebug()
+        debugSource = sourceUrl
+        startTime = System.currentTimeMillis()
+    }
+
     fun startChecking(source: BookSource) {
         isChecking = true
         debugTimeMap[source.bookSourceUrl] = System.currentTimeMillis()

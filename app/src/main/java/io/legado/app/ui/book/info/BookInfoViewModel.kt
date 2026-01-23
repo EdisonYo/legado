@@ -33,6 +33,7 @@ import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadManga
+import io.legado.app.model.AutoTask
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.model.webBook.WebBook
@@ -462,6 +463,7 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
     fun delBook(deleteOriginal: Boolean = false, success: (() -> Unit)? = null) {
         execute {
             bookData.value?.let {
+                AutoTask.delete(AutoTask.bookTaskId(it.bookUrl))
                 it.delete()
                 inBookshelf = false
                 if (it.isLocal) {

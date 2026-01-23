@@ -1,9 +1,13 @@
 package io.legado.app.model
 
 import android.content.Context
+import androidx.core.app.NotificationCompat
+import io.legado.app.R
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
+import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -16,6 +20,8 @@ import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.service.CacheBookService
+import io.legado.app.ui.book.cache.CacheActivity
+import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.startService
@@ -36,6 +42,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import splitties.init.appCtx
+import splitties.systemservices.notificationManager
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.CoroutineContext
 
@@ -194,10 +202,13 @@ object CacheBook {
 
         private val waitDownloadSet = linkedSetOf<Int>()
         private val onDownloadSet = linkedSetOf<Int>()
+        private val successSet = linkedSetOf<Int>()
+        private val errorSet = linkedSetOf<Int>()
         private val tasks = CompositeCoroutine()
         private var isStopped = false
         private var waitingRetry = false
         private var isLoading = false
+        private var notifiedComplete = false
 
         val waitCount get() = waitDownloadSet.size
         val onDownloadCount get() = onDownloadSet.size
@@ -237,6 +248,11 @@ object CacheBook {
 
         @Synchronized
         fun addDownload(start: Int, end: Int) {
+            if (isStopped) {
+                successSet.clear()
+                errorSet.clear()
+                notifiedComplete = false
+            }
             isStopped = false
             for (i in start..end) {
                 if (!onDownloadSet.contains(i)) {
@@ -253,6 +269,8 @@ object CacheBook {
             onDownloadSet.remove(chapter.index)
             successDownloadSet.add(chapter.primaryStr())
             errorDownloadMap.remove(chapter.primaryStr())
+            successSet.add(chapter.index)
+            errorSet.remove(chapter.index)
         }
 
         @Synchronized
@@ -271,6 +289,7 @@ object CacheBook {
             if ((errorDownloadMap[chapter.primaryStr()] ?: 0) < 3 && !isStopped) {
                 waitDownloadSet.add(chapter.index)
             } else {
+                errorSet.add(chapter.index)
                 AppLog.put(
                     "下载${book.name}-${chapter.title}失败\n${error.localizedMessage}",
                     error
@@ -294,9 +313,32 @@ object CacheBook {
         @Synchronized
         private fun onFinally() {
             if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty()) {
+                if (!isStopped && !notifiedComplete) {
+                    notifiedComplete = true
+                    notifyComplete()
+                }
                 cacheBookMap.remove(book.bookUrl)
             }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
+        }
+
+        private fun notifyComplete() {
+            val title = appCtx.getString(R.string.cache_book_complete_title, book.name)
+            val content = appCtx.getString(
+                R.string.cache_book_complete_content,
+                successSet.size,
+                errorSet.size
+            )
+            val notification = NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
+                .setSmallIcon(R.drawable.ic_download)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(appCtx.activityPendingIntent<CacheActivity>("cacheActivity"))
+                .build()
+            val notifyId = NotificationId.CacheBookComplete + (book.bookUrl.hashCode().ushr(1) % 100000)
+            notificationManager.notify(notifyId, notification)
         }
 
         /**

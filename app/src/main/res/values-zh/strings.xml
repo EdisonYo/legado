@@ -1,7 +1,7 @@
-<resources>
+﻿<resources>
     <!--App-->
-    <string name="app_name">阅读</string>
-    <string name="app_name_a">阅读·A</string>
+    <string name="app_name">阅读T</string>
+    <string name="app_name_a">阅读T·A</string>
     <string name="receiving_shared_label">阅读·搜索</string>
     <string name="tip_perm_request_storage">阅读需要访问存储卡权限，请前往“设置”—“应用权限”，打开所需权限</string>
 
@@ -91,10 +91,120 @@
     <string name="retry">重试</string>
     <string name="web_service">Web 服务</string>
     <string name="web_service_desc">用浏览器写源或看书</string>
+    <string name="auto_task_service">自动任务</string>
+    <string name="auto_task_last_run">上次执行：%1$s</string>
+    <string name="auto_task_script_empty">自动任务脚本为空</string>
+    <string name="auto_task_failed">自动任务失败：%1$s</string>
+    <string name="auto_task_no_enabled">没有可执行的任务</string>
+    <string name="auto_task_no_task">没有任务</string>
+    <string name="auto_task_running">正在执行：%1$s</string>
+    <string name="auto_task_group">定时任务</string>
+    <string name="auto_task_manage">定时任务管理</string>
+    <string name="auto_task_manage_desc">管理定时任务规则</string>
+    <string name="auto_task_service_desc">后台定时执行任务</string>
+    <string name="auto_task_interval">间隔（分钟）</string>
+    <string name="auto_task_cron">Cron 表达式（分 时 日 月 周）</string>
+    <string name="auto_task_cron_invalid">Cron 表达式无效</string>
+    <string name="auto_task_script">脚本</string>
+    <string name="auto_task_header">请求头（JSON）</string>
+    <string name="auto_task_jslib">JS 库</string>
+    <string name="auto_task_concurrent_rate">并发率</string>
+    <string name="auto_task_cookie_jar">启用 CookieJar</string>
+    <string name="auto_task_add">新增任务</string>
+    <string name="auto_task_delete">删除任务</string>
+    <string name="auto_task_edit">编辑任务</string>
+    <string name="auto_task_debug">任务调试</string>
+    <string name="auto_task_not_run">未执行</string>
+    <string name="auto_task_last_error">上次错误：%1$s</string>
+    <string name="auto_task_item_summary">Cron %1$s | %2$s</string>
+    <string name="auto_task_name_required">名称不能为空</string>
+    <string name="auto_task_book_update_title">《%1$s》更新提醒</string>
+    <string name="auto_task_book_update_content">新增 %1$d 章，最新：%2$s</string>
+    <string name="auto_task_book_update_content_count">新增 %1$d 章</string>
+    <string name="auto_task_book_update">定时检测更新</string>
+    <string name="auto_task_book_update_name">更新检测：%1$s</string>
+    <string name="auto_task_enable">总开关</string>
+    <string name="auto_task_notify_switch">通知</string>
+    <string name="auto_task_cache_switch">缓存新章节</string>
+    <string name="auto_task_book_update_saved">定时任务已保存</string>
+    <string name="auto_task_book_update_deleted">定时任务已禁用</string>
+    <string name="auto_task_notify_title">任务通知</string>
+    <string name="auto_task_notify_content">%1$s</string>
+    <string name="auto_task_help_title">定时任务帮助</string>
+    <string name="auto_task_help_content"><![CDATA[# Cron 格式
+
+Cron 使用 5 个字段：**分 时 日 月 周**
+
+- `*` 任意值
+- `,` 列表
+- `-` 范围
+- `/` 步长
+
+示例：
+- `*/5 * * * *` 每 5 分钟
+- `0 9 * * *` 每天 09:00
+- `0 9 * * 1` 每周一 09:00
+
+# 返回协议
+
+脚本返回 JSON（对象或字符串均可）：
+
+支持动作：
+
+- `type: refreshToc`
+  - `bookUrl`（必填）
+  - `notify`（对象）：`enable` `minCount` `title` `content`
+  - `cache`（对象）：`enable`
+- `type: notify`
+  - `title` `content`
+  - `level`（`high/error/fail/failed/low`）
+  - `id`（可选）
+
+```json
+{
+  "actions": [
+    {
+      "type": "refreshToc",
+      "bookUrl": "书架里的 bookUrl",
+      "notify": {
+        "enable": true,
+        "minCount": 5,
+        "title": "《{book}》更新提醒",
+        "content": "新增 {newCount} 章，最新：{chapter}"
+      },
+      "cache": {
+        "enable": true
+      }
+    },
+    {
+      "type": "notify",
+      "title": "签到成功",
+      "content": "账号A 已签到，{time}",
+      "level": "high",
+      "id": 1
+    }
+  ]
+}
+```
+
+占位符：
+- `{book}` `{author}` `{newCount}` `{chapter}` `{time}`（refreshToc 通知）
+- `{task}` `{time}`（notify 通知）
+]]></string>
+    <string name="import_auto_task">导入定时任务</string>
+    <string name="import_status_new">新增</string>
+    <string name="import_status_update">更新</string>
+    <string name="import_status_exist">已有</string>
+    <string name="auto_task_group_basic">基础</string>
+    <string name="auto_task_group_script">脚本</string>
+    <string name="auto_task_group_request">请求</string>
+    <string name="auto_task_group_login">登录</string>
     <string name="web_edit_source">Web 编辑书源</string>
     <string name="offline_cache">离线缓存</string>
     <string name="offline_cache_t">离线缓存</string>
     <string name="offline_cache_s">缓存选择的章节到本地</string>
+    <string name="cache_book_complete_title">《%1$s》缓存完成</string>
+    <string name="cache_book_complete_content">成功 %1$d 章，失败 %2$d 章</string>
     <string name="change_origin">换源</string>
     <string name="about_description">
         \u3000\u3000这是一款使用 Kotlin 全新开发的开源的阅读软件，欢迎您的加入。
@@ -1232,3 +1342,9 @@
     <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
     <string name="sys_image_picker">系统图片选择器</string>
 </resources>
+
+
+
+
+
+

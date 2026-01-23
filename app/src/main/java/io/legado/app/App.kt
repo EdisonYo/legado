@@ -51,6 +51,7 @@ import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
 import io.legado.app.model.BookCover
+import io.legado.app.service.AutoTaskService
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
@@ -123,6 +124,9 @@ class App : Application() {
             //同步阅读记录
             if (AppConfig.syncBookProgress) {
                 AppWebDav.downloadAllBookProgress()
+            }
+            if (getPrefBoolean(PreferKey.autoTaskService)) {
+                AutoTaskService.start(appCtx)
             }
         }
     }

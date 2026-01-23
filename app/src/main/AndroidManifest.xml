@@ -218,6 +218,22 @@
             android:name=".ui.book.toc.rule.TxtTocRuleActivity"
             android:launchMode="singleTop"
             android:screenOrientation="behind" />
+        <!-- 定时任务管理 -->
+        <activity
+            android:name=".ui.autoTask.AutoTaskActivity"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind" />
+        <!-- 定时任务编辑 -->
+        <activity
+            android:name=".ui.autoTask.AutoTaskEditActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+        <!-- 定时任务调试 -->
+        <activity
+            android:name=".ui.autoTask.AutoTaskDebugActivity"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind" />
         <!-- 替换规则界面 -->
         <activity
             android:name=".ui.replace.ReplaceRuleActivity"
@@ -462,6 +478,9 @@
             android:foregroundServiceType="dataSync" />
         <service
             android:name=".service.WebService"
+            android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".service.AutoTaskService"
             android:foregroundServiceType="dataSync" />
         <service
             android:name=".service.WebTileService"

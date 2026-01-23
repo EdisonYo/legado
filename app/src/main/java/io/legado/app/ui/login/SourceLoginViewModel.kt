@@ -7,6 +7,8 @@ import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.BookSource
+import io.legado.app.model.AutoTask
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.utils.toastOnUi
 
@@ -23,6 +25,22 @@ class SourceLoginViewModel(application: Application) : BaseViewModel(application
                 "bookSource" -> source = appDb.bookSourceDao.getBookSource(sourceKey)
                 "rssSource" -> source = appDb.rssSourceDao.getByKey(sourceKey)
                 "httpTts" -> source = appDb.httpTTSDao.get(sourceKey.toLong())
+                "autoTask" -> {
+                    val rule = AutoTask.getRules().firstOrNull { it.id == sourceKey }
+                        ?: return@execute null
+                    source = BookSource(
+                        bookSourceUrl = "${AutoTask.SOURCE_KEY}:${rule.id}",
+                        bookSourceName = rule.name
+                    ).apply {
+                        loginUrl = rule.loginUrl
+                        loginUi = rule.loginUi
+                        loginCheckJs = rule.loginCheckJs
+                        header = rule.header
+                        jsLib = rule.jsLib
+                        concurrentRate = rule.concurrentRate
+                        enabledCookieJar = rule.enabledCookieJar
+                    }
+                }
             }
             headerMap = runScriptWithContext {
                 source?.getHeaderMap(true) ?: emptyMap()

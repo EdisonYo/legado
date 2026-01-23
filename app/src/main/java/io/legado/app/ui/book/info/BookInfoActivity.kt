@@ -41,6 +41,8 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.BookCover
+import io.legado.app.model.AutoTask
+import io.legado.app.model.AutoTaskRule
 import io.legado.app.model.remote.RemoteBookWebDav
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayActivity
@@ -61,6 +63,7 @@ import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
+import io.legado.app.databinding.DialogBookAutoTaskBinding
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.StartActivityContract
@@ -76,6 +79,7 @@ import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
+import io.legado.app.utils.fromJsonObject
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -196,6 +200,8 @@ class BookInfoActivity :
             viewModel.bookData.value?.isLocalTxt ?: false
         menu.findItem(R.id.menu_upload)?.isVisible =
             viewModel.bookData.value?.isLocal ?: false
+        menu.findItem(R.id.menu_auto_task_book_update)?.isVisible =
+            viewModel.inBookshelf
         menu.findItem(R.id.menu_delete_alert)?.isChecked =
             LocalConfig.bookInfoDeleteAlert
         return super.onMenuOpened(featureId, menu)
@@ -221,6 +227,10 @@ class BookInfoActivity :
 
             R.id.menu_refresh -> {
                 refreshBook()
+            }
+
+            R.id.menu_auto_task_book_update -> {
+                showAutoTaskDialog()
             }
 
             R.id.menu_login -> viewModel.bookSource?.let {
@@ -621,6 +631,213 @@ class BookInfoActivity :
         viewModel.getBook()?.let {
             tocActivityResult.launch(it.bookUrl)
         }
+    }
+
+    private data class BookAutoTaskConfig(
+        val enabled: Boolean,
+        val notifyEnabled: Boolean,
+        val cacheEnabled: Boolean,
+        val intervalMinutes: Int
+    )
+
+    private fun showAutoTaskDialog() {
+        val book = viewModel.getBook() ?: return
+        val taskId = AutoTask.bookTaskId(book.bookUrl)
+        val existing = AutoTask.getRules().firstOrNull { it.id == taskId }
+        val config = parseBookAutoTaskConfig(existing, book.bookUrl)
+        val dialogBinding = DialogBookAutoTaskBinding.inflate(layoutInflater)
+        dialogBinding.switchEnable.isChecked = config.enabled
+        dialogBinding.switchNotify.isChecked = config.notifyEnabled
+        dialogBinding.switchCache.isChecked = config.cacheEnabled
+        dialogBinding.editInterval.setText(config.intervalMinutes.toString())
+        alert(R.string.auto_task_book_update) {
+            customView { dialogBinding.root }
+            okButton {
+                val enabled = dialogBinding.switchEnable.isChecked
+                val minutes = dialogBinding.editInterval.text?.toString()?.trim()?.toIntOrNull()
+                    ?.coerceAtLeast(1)
+                    ?: (parseCronMinutes(AutoTask.DEFAULT_CRON) ?: 5)
+                val notifyEnabled = dialogBinding.switchNotify.isChecked
+                val cacheEnabled = dialogBinding.switchCache.isChecked
+                val cron = "*/$minutes * * * *"
+                val script = buildBookUpdateScript(
+                    bookUrl = book.bookUrl,
+                    notifyEnabled = notifyEnabled,
+                    cacheEnabled = cacheEnabled,
+                    minCount = 1
+                )
+                val displayName = if (book.name.isNotBlank()) book.name else book.bookUrl
+                val updated = (existing ?: AutoTaskRule(id = taskId)).copy(
+                    id = taskId,
+                    name = getString(R.string.auto_task_book_update_name, displayName),
+                    enable = enabled,
+                    cron = cron,
+                    script = script
+                )
+                AutoTask.upsert(updated)
+                if (enabled) {
+                    toastOnUi(R.string.auto_task_book_update_saved)
+                } else {
+                    toastOnUi(R.string.auto_task_book_update_deleted)
+                }
+            }
+            cancelButton()
+        }
+    }
+
+    private fun parseBookAutoTaskConfig(
+        task: AutoTaskRule?,
+        bookUrl: String
+    ): BookAutoTaskConfig {
+        val defaultInterval = parseCronMinutes(AutoTask.DEFAULT_CRON) ?: 5
+        if (task == null) {
+            return BookAutoTaskConfig(
+                enabled = true,
+                notifyEnabled = true,
+                cacheEnabled = false,
+                intervalMinutes = defaultInterval
+            )
+        }
+        val interval = parseCronMinutes(task.cron) ?: defaultInterval
+        var notifyEnabled = true
+        var cacheEnabled = false
+        val json = extractTaskJson(task.script)
+        if (!json.isNullOrBlank()) {
+            val root = GSON.fromJsonObject<Map<String, Any?>>(json).getOrNull()
+            val action = findRefreshAction(root, bookUrl)
+            val notify = toStringKeyMap(action?.get("notify"))
+            val cache = toStringKeyMap(action?.get("cache"))
+            notifyEnabled = readBoolean(notify, "enable", notifyEnabled)
+            cacheEnabled = readBoolean(cache, "enable", cacheEnabled)
+        }
+        return BookAutoTaskConfig(
+            enabled = task.enable,
+            notifyEnabled = notifyEnabled,
+            cacheEnabled = cacheEnabled,
+            intervalMinutes = interval
+        )
+    }
+
+    private fun buildBookUpdateScript(
+        bookUrl: String,
+        notifyEnabled: Boolean,
+        cacheEnabled: Boolean,
+        minCount: Int
+    ): String {
+        val notify = linkedMapOf<String, Any?>(
+            "enable" to notifyEnabled,
+            "minCount" to minCount
+        )
+        val cache = linkedMapOf<String, Any?>(
+            "enable" to cacheEnabled
+        )
+        val action = linkedMapOf<String, Any?>(
+            "type" to "refreshToc",
+            "bookUrl" to bookUrl,
+            "notify" to notify,
+            "cache" to cache
+        )
+        val root = linkedMapOf<String, Any?>(
+            "actions" to listOf(action)
+        )
+        val json = GSON.toJson(root)
+        return "var __autoTask = $json;\n__autoTask"
+    }
+
+    private fun extractTaskJson(script: String?): String? {
+        if (script.isNullOrBlank()) return null
+        val normalized = AutoTask.normalizeScript(script)
+        val trimmed = normalized.trim()
+        val assignMatch = Regex("^(?:var|let|const)\\s+[\\w$]+\\s*=\\s*(.+)$", RegexOption.DOT_MATCHES_ALL)
+            .find(trimmed)
+        if (assignMatch != null) {
+            val assigned = assignMatch.groupValues[1].trim()
+            val first = assigned.substringBefore(";").trim()
+            val inner = unwrapJsonExpression(first) ?: first
+            if (inner.startsWith("{") || inner.startsWith("[")) {
+                return inner
+            }
+        }
+        if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+            val inner = trimmed.substring(1, trimmed.length - 1).trim()
+            if (inner.startsWith("{") || inner.startsWith("[")) {
+                return inner
+            }
+        }
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return trimmed
+        }
+        val index = trimmed.indexOf("return")
+        if (index < 0) return null
+        val after = trimmed.substring(index + 6).trim()
+        if (after.isBlank()) return null
+        return after.substringBefore(";").trim()
+    }
+
+    private fun unwrapJsonExpression(text: String): String? {
+        val trimmed = text.trim()
+        if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+            return trimmed.substring(1, trimmed.length - 1).trim()
+        }
+        return null
+    }
+
+    private fun parseCronMinutes(cron: String?): Int? {
+        if (cron.isNullOrBlank()) return null
+        val match = Regex("^\\s*\\*/(\\d+)\\s+\\*\\s+\\*\\s+\\*\\s+\\*\\s*$")
+            .find(cron.trim())
+        return match?.groupValues?.getOrNull(1)?.toIntOrNull()
+    }
+
+    private fun findRefreshAction(
+        root: Map<String, Any?>?,
+        bookUrl: String
+    ): Map<String, Any?>? {
+        if (root == null) return null
+        val actionsValue = root["actions"]
+        val actions = when (actionsValue) {
+            is List<*> -> actionsValue
+            else -> if (root.containsKey("type")) listOf(root) else emptyList()
+        }
+        return actions.mapNotNull { toStringKeyMap(it) }
+            .firstOrNull {
+                val type = it["type"]?.toString()
+                val url = it["bookUrl"]?.toString()
+                type.equals("refreshToc", true) && url == bookUrl
+            }
+    }
+
+    private fun toStringKeyMap(value: Any?): Map<String, Any?>? {
+        return when (value) {
+            is Map<*, *> -> {
+                val out = LinkedHashMap<String, Any?>()
+                value.forEach { (k, v) ->
+                    if (k != null) out[k.toString()] = v
+                }
+                out
+            }
+            else -> null
+        }
+    }
+
+    private fun readBoolean(
+        map: Map<String, Any?>?,
+        key: String,
+        defaultValue: Boolean
+    ): Boolean {
+        if (map == null) return defaultValue
+        val value = getValueIgnoreCase(map, key)
+        return when (value) {
+            is Boolean -> value
+            is Number -> value.toInt() != 0
+            is String -> value.equals("true", true) || value == "1"
+            else -> defaultValue
+        }
+    }
+
+    private fun getValueIgnoreCase(map: Map<String, Any?>, key: String): Any? {
+        map[key]?.let { return it }
+        return map.entries.firstOrNull { it.key.equals(key, true) }?.value
     }
 
     private fun showWebFileDownloadAlert(
