@@ -1,6 +1,7 @@
 package io.legado.app.ui.autoTask
 
 import android.app.Application
+import com.google.gson.annotations.SerializedName
 import io.legado.app.base.BaseViewModel
 import io.legado.app.model.AutoTask
 import io.legado.app.model.AutoTaskRule
@@ -15,6 +16,53 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 class AutoTaskViewModel(application: Application) : BaseViewModel(application) {
+
+    private data class AutoTaskExport(
+        @SerializedName("id")
+        val id: String,
+        @SerializedName("name")
+        val name: String,
+        @SerializedName("enable")
+        val enable: Boolean,
+        @SerializedName("cron")
+        val cron: String?,
+        @SerializedName("loginUrl")
+        val loginUrl: String?,
+        @SerializedName("loginUi")
+        val loginUi: String?,
+        @SerializedName("loginCheckJs")
+        val loginCheckJs: String?,
+        @SerializedName("comment")
+        val comment: String?,
+        @SerializedName("script")
+        val script: String,
+        @SerializedName("header")
+        val header: String?,
+        @SerializedName("jsLib")
+        val jsLib: String?,
+        @SerializedName("concurrentRate")
+        val concurrentRate: String?,
+        @SerializedName("enabledCookieJar")
+        val enabledCookieJar: Boolean
+    )
+
+    private fun AutoTaskRule.toExport(): AutoTaskExport {
+        return AutoTaskExport(
+            id = id,
+            name = name,
+            enable = enable,
+            cron = cron,
+            loginUrl = loginUrl,
+            loginUi = loginUi,
+            loginCheckJs = loginCheckJs,
+            comment = comment,
+            script = script,
+            header = header,
+            jsLib = jsLib,
+            concurrentRate = concurrentRate,
+            enabledCookieJar = enabledCookieJar
+        )
+    }
 
     private val _rulesFlow = MutableStateFlow<List<AutoTaskRule>>(emptyList())
     val rulesFlow = _rulesFlow.asStateFlow()
@@ -75,7 +123,8 @@ class AutoTaskViewModel(application: Application) : BaseViewModel(application) {
             FileUtils.delete(path)
             val file = FileUtils.createFileWithReplace(path)
             file.outputStream().buffered().use {
-                GSON.writeToOutputStream(it, AutoTask.getRules())
+                val tasks = AutoTask.getRules().map { rule -> rule.toExport() }
+                GSON.writeToOutputStream(it, tasks)
             }
             file
         }.onSuccess {
@@ -89,7 +138,9 @@ class AutoTaskViewModel(application: Application) : BaseViewModel(application) {
         if (ids.isEmpty()) return
         execute {
             val idSet = ids.toHashSet()
-            val tasks = AutoTask.getRules().filter { idSet.contains(it.id) }
+            val tasks = AutoTask.getRules()
+                .filter { idSet.contains(it.id) }
+                .map { rule -> rule.toExport() }
             val path = "${context.filesDir}/exportAutoTaskSelection.json"
             FileUtils.delete(path)
             val file = FileUtils.createFileWithReplace(path)
