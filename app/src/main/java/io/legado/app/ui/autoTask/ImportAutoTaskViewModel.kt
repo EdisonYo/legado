@@ -82,6 +82,9 @@ class ImportAutoTaskViewModel(app: Application) : BaseViewModel(app) {
     }
 
     fun importSource(text: String) {
+        allTasks.clear()
+        checkTasks.clear()
+        selectStatus.clear()
         execute {
             importSourceAwait(text.trim())
         }.onError {

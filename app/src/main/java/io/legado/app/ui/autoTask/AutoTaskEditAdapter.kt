@@ -28,7 +28,7 @@ class AutoTaskEditAdapter :
 
     private sealed class Item {
         data class Header(val section: Section) : Item()
-        data class Field(val sectionKey: String, val entity: EditEntity) : Item()
+        data class Field(val entity: EditEntity) : Item()
     }
 
     private val editEntityMaxLine = AppConfig.sourceEditMaxLine
@@ -48,7 +48,7 @@ class AutoTaskEditAdapter :
             items.add(Item.Header(section))
             if (section.expanded) {
                 section.fields.forEach { field ->
-                    items.add(Item.Field(section.key, field))
+                    items.add(Item.Field(field))
                 }
             }
         }

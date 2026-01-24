@@ -201,30 +201,43 @@ class AutoTaskService : BaseService() {
             runCatching {
                 source.evalJS(script)
             }.onSuccess { result ->
-                val cost = System.currentTimeMillis() - startAt
-                val protocol = AutoTaskProtocol.handle(result, this, task.name) { msg ->
-                    AppLog.put("AutoTask ${task.name}: $msg")
-                }
-                val detail = result?.toString()?.take(200)
-                val msg = if (detail.isNullOrBlank()) {
-                    "AutoTask ${task.name} done (${cost}ms)."
-                } else {
-                    "AutoTask ${task.name} done (${cost}ms): $detail"
-                }
-                val lastRun = System.currentTimeMillis()
-                AutoTask.update(task.id) {
-                    it.copy(
-                        lastRunAt = lastRun,
-                        lastResult = detail,
-                        lastError = null
+                try {
+                    val cost = System.currentTimeMillis() - startAt
+                    AutoTaskProtocol.handle(result, this, task.name) { msg ->
+                        AppLog.put("AutoTask ${task.name}: $msg")
+                    }
+                    val detail = result?.toString()?.take(200)
+                    val msg = if (detail.isNullOrBlank()) {
+                        "AutoTask ${task.name} done (${cost}ms)."
+                    } else {
+                        "AutoTask ${task.name} done (${cost}ms): $detail"
+                    }
+                    val lastRun = System.currentTimeMillis()
+                    AutoTask.update(task.id) {
+                        it.copy(
+                            lastRunAt = lastRun,
+                            lastResult = detail,
+                            lastError = null
+                        )
+                    }
+                    notificationContent = getString(
+                        R.string.auto_task_last_run,
+                        timeFormat.format(Date(lastRun))
                     )
+                    upNotification()
+                    AppLog.put(msg)
+                } catch (error: Throwable) {
+                    val msg = error.localizedMessage ?: error.toString()
+                    AutoTask.update(task.id) {
+                        it.copy(
+                            lastRunAt = System.currentTimeMillis(),
+                            lastError = msg
+                        )
+                    }
+                    notificationContent = getString(R.string.auto_task_failed, msg)
+                    upNotification()
+                    AppLog.put("AutoTask ${task.name} failed: $msg", error)
                 }
-                notificationContent = getString(
-                    R.string.auto_task_last_run,
-                    timeFormat.format(Date(lastRun))
-                )
-                upNotification()
-                AppLog.put(msg)
             }.onFailure { error ->
                 val msg = error.localizedMessage ?: error.toString()
                 AutoTask.update(task.id) {

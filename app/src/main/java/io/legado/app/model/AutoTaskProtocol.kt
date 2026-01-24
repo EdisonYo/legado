@@ -57,7 +57,7 @@ object AutoTaskProtocol {
         return when (type) {
             "refreshtoc" -> handleRefreshToc(action, context)
             "notify" -> handleNotify(action, context, taskName)
-            else -> "未知动作: $type"
+            else -> throw IllegalArgumentException("未知动作: $type")
         }
     }
 

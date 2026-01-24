@@ -73,12 +73,6 @@ class AutoTaskDebugViewModel(application: Application) : BaseViewModel(applicati
     }
 
     private fun normalizeScript(script: String): String {
-        val trimmed = script.trim()
-        return when {
-            trimmed.startsWith("@js:", true) -> trimmed.substring(4).trim()
-            trimmed.startsWith("<js>", true) && trimmed.contains("</") ->
-                trimmed.substring(4, trimmed.lastIndexOf("<")).trim()
-            else -> trimmed
-        }
+        return AutoTask.normalizeScript(script)
     }
 }

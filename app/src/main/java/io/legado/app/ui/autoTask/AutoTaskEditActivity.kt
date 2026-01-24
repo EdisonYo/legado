@@ -129,10 +129,16 @@ class AutoTaskEditActivity :
                     listOf(fieldMap.getValue("name"), fieldMap.getValue("cron"))
                 ),
                 AutoTaskEditAdapter.Section(
+                    "comment",
+                    getString(R.string.auto_task_group_comment),
+                    true,
+                    listOf(fieldMap.getValue("comment"))
+                ),
+                AutoTaskEditAdapter.Section(
                     "script",
                     getString(R.string.auto_task_group_script),
                     true,
-                    listOf(fieldMap.getValue("comment"), fieldMap.getValue("script"))
+                    listOf(fieldMap.getValue("script"))
                 ),
                 AutoTaskEditAdapter.Section(
                     "request",

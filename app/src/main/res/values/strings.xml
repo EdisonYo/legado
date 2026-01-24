@@ -106,7 +106,7 @@
     <string name="auto_task_service_desc">Run tasks in background</string>
     <string name="auto_task_interval">Interval (minutes)</string>
     <string name="auto_task_cron">Cron (min hour day month week)</string>
-    <string name="auto_task_comment">Script note</string>
+    <string name="auto_task_comment">Script comment</string>
     <string name="auto_task_cron_invalid">Invalid cron expression</string>
     <string name="auto_task_script">Script</string>
     <string name="auto_task_header">Headers (JSON)</string>
@@ -200,6 +200,7 @@ Placeholders:
     <string name="import_status_update">Update</string>
     <string name="import_status_exist">Exists</string>
     <string name="auto_task_group_basic">Basic</string>
+    <string name="auto_task_group_comment">Comment</string>
     <string name="auto_task_group_script">Script</string>
     <string name="auto_task_group_request">Request</string>
     <string name="auto_task_group_login">Login</string>
