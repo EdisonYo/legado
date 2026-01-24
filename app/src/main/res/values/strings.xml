@@ -97,6 +97,7 @@
     <string name="auto_task_script_empty">Auto task script is empty</string>
     <string name="auto_task_failed">Auto task failed: %1$s</string>
     <string name="auto_task_no_enabled">No enabled tasks</string>
+    <string name="auto_task_running_state">Running</string>
     <string name="auto_task_no_task">No tasks</string>
     <string name="auto_task_running">Running: %1$s</string>
     <string name="auto_task_group">Schedule</string>

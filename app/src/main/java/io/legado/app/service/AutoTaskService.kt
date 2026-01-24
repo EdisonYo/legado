@@ -96,6 +96,8 @@ class AutoTaskService : BaseService() {
     private fun startLoop() {
         if (taskJob?.isActive == true) return
         isRun = true
+        notificationContent = getString(R.string.auto_task_running_state)
+        upNotification()
         taskJob = lifecycleScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val rules = AutoTask.getRules()

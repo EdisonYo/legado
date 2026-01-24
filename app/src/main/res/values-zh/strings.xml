@@ -96,6 +96,7 @@
     <string name="auto_task_script_empty">自动任务脚本为空</string>
     <string name="auto_task_failed">自动任务失败：%1$s</string>
     <string name="auto_task_no_enabled">没有可执行的任务</string>
+    <string name="auto_task_running_state">运行中</string>
     <string name="auto_task_no_task">没有任务</string>
     <string name="auto_task_running">正在执行：%1$s</string>
     <string name="auto_task_group">定时任务</string>
