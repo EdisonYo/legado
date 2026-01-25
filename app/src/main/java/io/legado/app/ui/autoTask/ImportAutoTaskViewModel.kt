@@ -100,6 +100,18 @@ class ImportAutoTaskViewModel(app: Application) : BaseViewModel(app) {
         }
     }
 
+    fun updateTaskAt(index: Int, task: AutoTaskRule) {
+        if (index < 0 || index >= allTasks.size) return
+        allTasks[index] = task
+        val localTask = AutoTask.getRules().firstOrNull { it.id == task.id }
+        if (index < checkTasks.size) {
+            checkTasks[index] = localTask
+        }
+        if (index < selectStatus.size) {
+            selectStatus[index] = localTask == null || task != localTask
+        }
+    }
+
     private suspend fun importSourceAwait(text: String) {
         when {
             text.isJsonObject() -> {

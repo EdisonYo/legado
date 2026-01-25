@@ -27,7 +27,8 @@ import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import splitties.views.onClick
 
-class ImportAutoTaskDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
+class ImportAutoTaskDialog() : BaseDialogFragment(R.layout.dialog_recycler_view),
+    CodeDialog.Callback {
 
     constructor(source: String, finishOnDismiss: Boolean = false) : this() {
         arguments = Bundle().apply {
@@ -182,5 +183,15 @@ class ImportAutoTaskDialog() : BaseDialogFragment(R.layout.dialog_recycler_view)
             }
         }
 
+    }
+
+    override fun onCodeSave(code: String, requestId: String?) {
+        requestId?.toInt()?.let { index ->
+            GSON.fromJsonObject<AutoTaskRule>(code).getOrNull()?.let { task ->
+                viewModel.updateTaskAt(index, task)
+                adapter.setItem(index, task)
+                upSelectText()
+            }
+        }
     }
 }
