@@ -244,9 +244,13 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
                     handled = true
                 }
 
-                is ImageColumn -> if (AppConfig.previewImageByClick) {
-                    activity?.showDialogFragment(PhotoDialog(column.src))
-                    handled = true
+                is ImageColumn -> {
+                    if (callBack.onImageClick(column.src)) {
+                        handled = true
+                    } else if (AppConfig.previewImageByClick) {
+                        activity?.showDialogFragment(PhotoDialog(column.src))
+                        handled = true
+                    }
                 }
             }
         }
@@ -711,6 +715,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         fun upSelectedStart(x: Float, y: Float, top: Float)
         fun upSelectedEnd(x: Float, y: Float)
         fun onImageLongPress(x: Float, y: Float, src: String)
+        fun onImageClick(src: String): Boolean
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean
     }

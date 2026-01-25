@@ -62,6 +62,7 @@ import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setChapter
 import io.legado.app.model.analyzeRule.AnalyzeRule.Companion.setCoroutineContext
+import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.EpubFile
 import io.legado.app.model.localBook.MobiFile
 import io.legado.app.receiver.NetworkChangedListener
@@ -126,6 +127,8 @@ import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.throttle
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
@@ -1420,6 +1423,28 @@ class ReadBookActivity : BaseReadBookActivity(),
             binding.readView, Gravity.BOTTOM or Gravity.LEFT, x.toInt(),
             binding.root.height + navigationBarHeight - y.toInt()
         )
+    }
+
+    override fun onImageClick(src: String): Boolean {
+        val urlMatcher = AnalyzeUrl.paramPattern.matcher(src)
+        if (!urlMatcher.find()) return false
+        val urlOptionStr = src.substring(urlMatcher.end())
+        val urlOptionMap = GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()
+        val click = urlOptionMap?.get("click")?.takeIf { it.isNotBlank() } ?: return false
+        Coroutine.async(lifecycleScope, IO) {
+            val source = ReadBook.bookSource ?: return@async
+            val book = ReadBook.book ?: return@async
+            val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
+                ?: throw Exception("no find chapter")
+            source.evalJS(click) {
+                put("book", book)
+                put("chapter", chapter)
+                put("src", src)
+            }
+        }.onError {
+            AppLog.put("执行图片链接click键值出错\n${it.localizedMessage}", it, true)
+        }
+        return true
     }
 
     /**
