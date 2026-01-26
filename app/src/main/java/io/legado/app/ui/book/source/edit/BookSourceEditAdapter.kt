@@ -10,6 +10,8 @@ import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.databinding.ItemSourceEditWebBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.ThemeStore
+import android.content.res.ColorStateList
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
@@ -89,6 +91,9 @@ class BookSourceEditAdapter(
                 }
             )
             textInputLayout.hint = editEntity.hint
+            btnWebEdit.imageTintList = ColorStateList.valueOf(
+                ThemeStore.accentColor(itemView.context)
+            )
             btnWebEdit.setOnClickListener {
                 onUnsafeTextEdit?.invoke(editEntity)
             }

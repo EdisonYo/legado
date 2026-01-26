@@ -4,9 +4,11 @@ import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.util.Base64
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.KeyEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebViewClient
@@ -15,10 +17,10 @@ import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
 import io.legado.app.databinding.DialogWebCodeViewBinding
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.viewbindingdelegate.viewBinding
-import android.util.Base64
 
 class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
 
@@ -33,6 +35,8 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
     private val binding by viewBinding(DialogWebCodeViewBinding::bind)
     private var pendingCode: String = ""
     private var pageReady = false
+    private var pendingClose = false
+    private var confirmShown = false
 
     override fun onStart() {
         super.onStart()
@@ -40,6 +44,14 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dialog?.setOnKeyListener { _, keyCode, event ->
+            if (keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+                requestClose()
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -88,6 +100,45 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
             }
         }
         binding.webView.loadUrl("file:///android_asset/web/code-editor/editor.html")
+    }
+
+    private fun requestClose() {
+        if (pendingClose || confirmShown) return
+        if (!pageReady) {
+            dismissAllowingStateLoss()
+            return
+        }
+        pendingClose = true
+        binding.webView.evaluateJavascript("window.__getCode && window.__getCode();") { value ->
+            pendingClose = false
+            val current = decodeJsString(value)
+            if (current == null || current == pendingCode) {
+                dismissAllowingStateLoss()
+                return@evaluateJavascript
+            }
+            confirmShown = true
+            alert(R.string.exit, R.string.exit_no_save) {
+                positiveButton(R.string.yes) {
+                    confirmShown = false
+                    dismissAllowingStateLoss()
+                }
+                negativeButton(R.string.no) {
+                    confirmShown = false
+                }
+                onDismiss {
+                    confirmShown = false
+                }
+            }
+        }
+    }
+
+    private fun decodeJsString(value: String?): String? {
+        if (value.isNullOrBlank() || value == "null") return null
+        return try {
+            org.json.JSONArray("[$value]").getString(0)
+        } catch (e: Exception) {
+            value
+        }
     }
 
     override fun onDestroyView() {

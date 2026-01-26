@@ -154,8 +154,8 @@
 <body>
 
   <div id="toolbar">
-    <button id="undoBtn" class="btn">↩</button>
-    <button id="redoBtn" class="btn">↪</button>
+    <button id="undoBtn" class="btn">撤销</button>
+    <button id="redoBtn" class="btn">重做</button>
     <button id="wrapBtn" class="btn">换行</button>
     <button id="formatBtn" class="btn">格式化</button>
     <button id="searchToggleBtn" class="btn">🔍</button>
@@ -444,7 +444,7 @@
         const text = raw.trim();
         if (!text) return;
 
-        const wrapper = detectWrapper(text);
+        const wrapper = detectWrapper(raw);
         if (wrapper) {
           const bodyText = (wrapper.body || "").trim();
           const formattedBody = bodyText ? formatLooseJS(bodyText) : "";
@@ -512,12 +512,12 @@
         return result.substring(1, result.length-3);
       }
 
-      function detectWrapper(text) {
-        const trimmed = text.trim();
-        if (trimmed.startsWith("@js:")) {
-          let body = trimmed.slice(4);
-          if (body.startsWith("\n")) body = body.slice(1);
-          return { type: "prefix", prefix: "@js:", body };
+      function detectWrapper(rawText) {
+        const raw = rawText || "";
+        const trimmed = raw.trim();
+        const jsPrefixMatch = raw.match(/^\s*@js:\s*[\r\n]?([\s\S]*)$/);
+        if (jsPrefixMatch) {
+          return { type: "prefix", prefix: "@js:", body: jsPrefixMatch[1] || "" };
         }
         const tagMatch = trimmed.match(/^<js>\s*([\s\S]*?)\s*<\/js>$/i);
         if (tagMatch) {
@@ -625,6 +625,10 @@
         const val = code.value || "";
         if (window.Android && window.Android.save) window.Android.save(val);
         else console.log("Mock Save:", val);
+      };
+
+      window.__getCode = function () {
+        return code.value || "";
       };
       
       updateLines();

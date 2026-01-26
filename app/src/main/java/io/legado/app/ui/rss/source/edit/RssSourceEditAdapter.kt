@@ -11,6 +11,8 @@ import io.legado.app.R
 import io.legado.app.databinding.ItemSourceEditWebBinding
 import io.legado.app.databinding.ItemSourceEditCheckBoxBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.ThemeStore
+import android.content.res.ColorStateList
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
@@ -92,6 +94,9 @@ class RssSourceEditAdapter(
             }
             editText.setText(editEntity.value)
             textInputLayout.hint = editEntity.hint
+            btnWebEdit.imageTintList = ColorStateList.valueOf(
+                ThemeStore.accentColor(itemView.context)
+            )
             btnWebEdit.setOnClickListener {
                 onWebEdit?.invoke(editEntity)
             }
