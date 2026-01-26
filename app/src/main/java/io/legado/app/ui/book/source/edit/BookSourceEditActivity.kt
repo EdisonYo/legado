@@ -33,7 +33,7 @@ import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
-import io.legado.app.ui.widget.dialog.CodeDialog
+import io.legado.app.ui.widget.dialog.WebCodeDialog
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -62,20 +62,19 @@ class BookSourceEditActivity :
     VMBaseActivity<ActivityBookSourceEditBinding, BookSourceEditViewModel>(),
     KeyboardToolPop.CallBack,
     VariableDialog.Callback,
-    CodeDialog.Callback {
+    WebCodeDialog.Callback {
 
     override val binding by viewBinding(ActivityBookSourceEditBinding::inflate)
     override val viewModel by viewModels<BookSourceEditViewModel>()
 
-    private val largeEditRequests = linkedMapOf<String, EditEntity>()
+    private val unsafeEditRequests = linkedMapOf<String, EditEntity>()
     private val adapter by lazy {
         BookSourceEditAdapter { entity ->
             val requestId = java.util.UUID.randomUUID().toString()
-            largeEditRequests[requestId] = entity
+            unsafeEditRequests[requestId] = entity
             showDialogFragment(
-                CodeDialog(
+                WebCodeDialog(
                     entity.value.orEmpty(),
-                    disableEdit = false,
                     requestId = requestId
                 )
             )
@@ -678,7 +677,7 @@ class BookSourceEditActivity :
     }
 
     override fun onCodeSave(code: String, requestId: String?) {
-        val entity = requestId?.let { largeEditRequests.remove(it) } ?: return
+        val entity = requestId?.let { unsafeEditRequests.remove(it) } ?: return
         entity.value = code
         val index = adapter.editEntities.indexOf(entity)
         if (index >= 0) {

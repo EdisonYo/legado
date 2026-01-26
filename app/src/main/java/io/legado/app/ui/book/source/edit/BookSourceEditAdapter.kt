@@ -16,12 +16,11 @@ import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.ui.widget.text.EditEntity
 
 class BookSourceEditAdapter(
-    private val onLargeTextEdit: ((EditEntity) -> Unit)? = null
+    private val onUnsafeTextEdit: ((EditEntity) -> Unit)? = null
 ) : RecyclerView.Adapter<BookSourceEditAdapter.MyViewHolder>() {
 
     val editEntityMaxLine = AppConfig.sourceEditMaxLine
-    private val largeTextThreshold = 12000
-    private val largePreviewLines = 6
+    private val unsafePreviewLines = 6
 
     var editEntities: ArrayList<EditEntity> = ArrayList()
         @SuppressLint("NotifyDataSetChanged")
@@ -52,15 +51,13 @@ class BookSourceEditAdapter(
 
         fun bind(editEntity: EditEntity) = binding.run {
             val rawText = editEntity.value.orEmpty()
-            val isLargeText = rawText.length > largeTextThreshold
-            editText.setTag(R.id.tagLargeText, isLargeText)
+            val isUnsafeText = isCombiningHeavy(rawText)
             editText.setTag(R.id.tag, editEntity.key)
-            editText.maxLines = if (isLargeText) largePreviewLines else editEntityMaxLine
+            editText.maxLines = if (isUnsafeText) unsafePreviewLines else editEntityMaxLine
             if (editText.getTag(R.id.tag1) == null) {
                 val listener = object : View.OnAttachStateChangeListener {
                     override fun onViewAttachedToWindow(v: View) {
-                        val large = editText.getTag(R.id.tagLargeText) == true
-                        if (large) {
+                        if (isUnsafeText) {
                             editText.isCursorVisible = false
                             editText.isFocusable = false
                             editText.isFocusableInTouchMode = false
@@ -85,22 +82,22 @@ class BookSourceEditAdapter(
                 }
             }
             editText.setText(
-                if (isLargeText) {
-                    itemView.context.getString(R.string.large_text_placeholder, rawText.length)
+                if (isUnsafeText) {
+                    itemView.context.getString(R.string.combining_text_placeholder)
                 } else {
                     rawText
                 }
             )
             textInputLayout.hint = editEntity.hint
-            if (isLargeText) {
+            if (isUnsafeText) {
                 editText.isCursorVisible = false
                 editText.isFocusable = false
                 editText.isFocusableInTouchMode = false
                 editText.setOnClickListener {
-                    onLargeTextEdit?.invoke(editEntity)
+                    onUnsafeTextEdit?.invoke(editEntity)
                 }
                 editText.setOnLongClickListener {
-                    onLargeTextEdit?.invoke(editEntity)
+                    onUnsafeTextEdit?.invoke(editEntity)
                     true
                 }
             } else {
@@ -131,6 +128,33 @@ class BookSourceEditAdapter(
                 editText.setTag(R.id.tag2, textWatcher)
             }
         }
+    }
+
+    private fun isCombiningHeavy(text: String): Boolean {
+        if (text.isEmpty()) return false
+        var combiningCount = 0
+        var inspected = 0
+        var run = 0
+        var maxRun = 0
+        val limit = minOf(text.length, 4000)
+        for (i in 0 until limit) {
+            val ch = text[i]
+            val type = Character.getType(ch)
+            val isCombining = type == Character.NON_SPACING_MARK ||
+                type == Character.COMBINING_SPACING_MARK ||
+                type == Character.ENCLOSING_MARK
+            if (isCombining) {
+                combiningCount++
+                run++
+                if (run > maxRun) maxRun = run
+            } else {
+                run = 0
+            }
+            inspected++
+        }
+        if (maxRun >= 8) return true
+        if (combiningCount >= 64) return true
+        return combiningCount * 5 >= inspected
     }
 
 
