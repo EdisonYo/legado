@@ -19,18 +19,21 @@ import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager
 import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.ui.widget.dialog.WebCodeDialog
 import io.legado.app.utils.CronSchedule
 import io.legado.app.utils.imeHeight
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
 import io.legado.app.utils.showHelp
+import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 
 class AutoTaskEditActivity :
     VMBaseActivity<ActivityAutoTaskEditBinding, AutoTaskEditViewModel>(),
-    KeyboardToolPop.CallBack {
+    KeyboardToolPop.CallBack,
+    WebCodeDialog.Callback {
 
     companion object {
         fun startIntent(context: Context, id: String? = null): Intent {
@@ -45,7 +48,18 @@ class AutoTaskEditActivity :
     override val binding by viewBinding(ActivityAutoTaskEditBinding::inflate)
     override val viewModel by viewModels<AutoTaskEditViewModel>()
 
-    private val adapter = AutoTaskEditAdapter()
+    private val webEditRequests = linkedMapOf<String, EditEntity>()
+    private val adapter = AutoTaskEditAdapter { entity ->
+        val requestId = java.util.UUID.randomUUID().toString()
+        webEditRequests[requestId] = entity
+        showDialogFragment(
+            WebCodeDialog(
+                entity.value.orEmpty(),
+                requestId = requestId,
+                title = entity.hint
+            )
+        )
+    }
     private val fieldMap = linkedMapOf<String, EditEntity>()
     private var task: AutoTaskRule? = null
     private val softKeyboardTool by lazy {
@@ -251,5 +265,11 @@ class AutoTaskEditActivity :
     override fun onDestroy() {
         super.onDestroy()
         softKeyboardTool.dismiss()
+    }
+
+    override fun onCodeSave(code: String, requestId: String?) {
+        val entity = requestId?.let { webEditRequests.remove(it) } ?: return
+        entity.value = code
+        adapter.notifyEntityUpdated(entity)
     }
 }

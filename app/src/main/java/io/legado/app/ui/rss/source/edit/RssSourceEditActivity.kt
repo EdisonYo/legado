@@ -23,6 +23,7 @@ import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.rss.source.debug.RssSourceDebugActivity
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
+import io.legado.app.ui.widget.dialog.WebCodeDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.ui.widget.text.EditEntity
@@ -49,14 +50,28 @@ import splitties.views.bottomPadding
 class RssSourceEditActivity :
     VMBaseActivity<ActivityRssSourceEditBinding, RssSourceEditViewModel>(),
     KeyboardToolPop.CallBack,
-    VariableDialog.Callback {
+    VariableDialog.Callback,
+    WebCodeDialog.Callback {
 
     override val binding by viewBinding(ActivityRssSourceEditBinding::inflate)
     override val viewModel by viewModels<RssSourceEditViewModel>()
     private val softKeyboardTool by lazy {
         KeyboardToolPop(this, lifecycleScope, binding.root, this)
     }
-    private val adapter by lazy { RssSourceEditAdapter() }
+    private val webEditRequests = linkedMapOf<String, EditEntity>()
+    private val adapter by lazy {
+        RssSourceEditAdapter { entity ->
+            val requestId = java.util.UUID.randomUUID().toString()
+            webEditRequests[requestId] = entity
+            showDialogFragment(
+                WebCodeDialog(
+                    entity.value.orEmpty(),
+                    requestId = requestId,
+                    title = entity.hint
+                )
+            )
+        }
+    }
     private val sourceEntities: ArrayList<EditEntity> = ArrayList()
     private val listEntities: ArrayList<EditEntity> = ArrayList()
     private val webViewEntities: ArrayList<EditEntity> = ArrayList()
@@ -401,6 +416,17 @@ class RssSourceEditActivity :
             } else {
                 edit.replace(start, end, text)//光标所在位置插入文字
             }
+        }
+    }
+
+    override fun onCodeSave(code: String, requestId: String?) {
+        val entity = requestId?.let { webEditRequests.remove(it) } ?: return
+        entity.value = code
+        val index = adapter.editEntities.indexOf(entity)
+        if (index >= 0) {
+            adapter.notifyItemChanged(index)
+        } else {
+            adapter.notifyDataSetChanged()
         }
     }
 

@@ -440,8 +440,30 @@
       }
 
       function formatCode() {
-        const text = code.value.trim();
+        const raw = code.value || "";
+        const text = raw.trim();
         if (!text) return;
+
+        const wrapper = detectWrapper(text);
+        if (wrapper) {
+          const bodyText = (wrapper.body || "").trim();
+          const formattedBody = bodyText ? formatLooseJS(bodyText) : "";
+          let wrapped = "";
+          if (wrapper.type === "prefix") {
+            wrapped = wrapper.prefix + (formattedBody ? "\n" + formattedBody : "");
+          } else if (wrapper.type === "tag") {
+            wrapped = wrapper.open + (formattedBody ? "\n" + formattedBody + "\n" : "") + wrapper.close;
+          } else if (wrapper.type === "moustache") {
+            wrapped = "{{" + (formattedBody ? "\n" + formattedBody + "\n" : "") + "}}";
+          } else {
+            wrapped = formattedBody;
+          }
+          code.value = wrapped;
+          updateLines();
+          saveHistory();
+          showToast("格式化完成");
+          return;
+        }
         
         // 1. 尝试标准 JSON
         let formatted = tryFormatJSON(text);
@@ -488,6 +510,24 @@
           }
         });
         return result.substring(1, result.length-3);
+      }
+
+      function detectWrapper(text) {
+        const trimmed = text.trim();
+        if (trimmed.startsWith("@js:")) {
+          let body = trimmed.slice(4);
+          if (body.startsWith("\n")) body = body.slice(1);
+          return { type: "prefix", prefix: "@js:", body };
+        }
+        const tagMatch = trimmed.match(/^<js>\s*([\s\S]*?)\s*<\/js>$/i);
+        if (tagMatch) {
+          return { type: "tag", open: "<js>", close: "</js>", body: tagMatch[1] };
+        }
+        const braceMatch = trimmed.match(/^\{\{\s*([\s\S]*?)\s*\}\}$/);
+        if (braceMatch) {
+          return { type: "moustache", body: braceMatch[1] };
+        }
+        return null;
       }
 
       // --- 事件绑定 ---

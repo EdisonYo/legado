@@ -8,7 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.databinding.ItemSourceEditWebBinding
 import io.legado.app.databinding.ItemSourceEditCheckBoxBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.code.addJsPattern
@@ -17,7 +17,9 @@ import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.isTrue
 
-class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+class RssSourceEditAdapter(
+    private val onWebEdit: ((EditEntity) -> Unit)? = null
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     val editEntityMaxLine = AppConfig.sourceEditMaxLine
 
@@ -41,7 +43,7 @@ class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                 CheckBoxViewHolder(binding)
             }
             else -> {
-                val binding = ItemSourceEditBinding
+                val binding = ItemSourceEditWebBinding
                     .inflate(LayoutInflater.from(parent.context), parent, false)
                 binding.editText.addLegadoPattern()
                 binding.editText.addJsonPattern()
@@ -62,7 +64,7 @@ class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         return editEntities.size
     }
 
-    inner class EditTextViewHolder(val binding: ItemSourceEditBinding) :
+    inner class EditTextViewHolder(val binding: ItemSourceEditWebBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(editEntity: EditEntity) = binding.run {
@@ -90,6 +92,9 @@ class RssSourceEditAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
             }
             editText.setText(editEntity.value)
             textInputLayout.hint = editEntity.hint
+            btnWebEdit.setOnClickListener {
+                onWebEdit?.invoke(editEntity)
+            }
             val textWatcher = object : TextWatcher {
                 override fun beforeTextChanged(
                     s: CharSequence,

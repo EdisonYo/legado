@@ -30,6 +30,6 @@
         android:contentDescription="@string/webview_edit"
         android:scaleType="center"
         android:src="@drawable/ic_code_tag"
-        android:tint="?attr/colorPrimary" />
+        android:tint="?attr/colorAccent" />
 
 </FrameLayout>

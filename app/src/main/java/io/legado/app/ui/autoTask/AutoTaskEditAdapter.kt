@@ -9,15 +9,16 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
 import io.legado.app.databinding.ItemAutoTaskGroupBinding
-import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.databinding.ItemSourceEditWebBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.ui.widget.text.EditEntity
 
-class AutoTaskEditAdapter :
-    RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+class AutoTaskEditAdapter(
+    private val onWebEdit: ((EditEntity) -> Unit)? = null
+) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     data class Section(
         val key: String,
@@ -40,6 +41,15 @@ class AutoTaskEditAdapter :
         sections.addAll(list)
         rebuildItems()
         notifyDataSetChanged()
+    }
+
+    fun notifyEntityUpdated(entity: EditEntity) {
+        val index = items.indexOfFirst { it is Item.Field && it.entity === entity }
+        if (index >= 0) {
+            notifyItemChanged(index)
+        } else {
+            notifyDataSetChanged()
+        }
     }
 
     private fun rebuildItems() {
@@ -67,7 +77,7 @@ class AutoTaskEditAdapter :
     override fun getItemViewType(position: Int): Int {
         return when (items[position]) {
             is Item.Header -> R.layout.item_auto_task_group
-            is Item.Field -> R.layout.item_source_edit
+            is Item.Field -> R.layout.item_source_edit_web
         }
     }
 
@@ -82,7 +92,7 @@ class AutoTaskEditAdapter :
             )
 
             else -> {
-                val binding = ItemSourceEditBinding.inflate(
+                val binding = ItemSourceEditWebBinding.inflate(
                     LayoutInflater.from(parent.context),
                     parent,
                     false
@@ -114,7 +124,7 @@ class AutoTaskEditAdapter :
     }
 
     inner class FieldHolder(
-        private val binding: ItemSourceEditBinding
+        private val binding: ItemSourceEditWebBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
         fun bind(editEntity: EditEntity) = binding.run {
@@ -142,6 +152,9 @@ class AutoTaskEditAdapter :
             }
             editText.setText(editEntity.value)
             textInputLayout.hint = editEntity.hint
+            btnWebEdit.setOnClickListener {
+                onWebEdit?.invoke(editEntity)
+            }
             val textWatcher = object : TextWatcher {
                 override fun beforeTextChanged(
                     s: CharSequence,
