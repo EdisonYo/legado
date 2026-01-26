@@ -175,6 +175,8 @@
 
   <div id="toast"></div>
 
+  <script src="esprima.min.js"></script>
+  <script src="escodegen.min.js"></script>
   <script>
     (function () {
       const code = document.getElementById("code");
@@ -451,6 +453,33 @@
         return indentJsLines(normalized);
       }
 
+      function formatWithEsprima(codeText) {
+        if (!window.esprima || !window.escodegen) return null;
+        try {
+          const ast = esprima.parseScript(codeText, {
+            comment: true,
+            range: true,
+            tokens: true
+          });
+          escodegen.attachComments(ast, ast.comments, ast.tokens);
+          return escodegen.generate(ast, {
+            comment: true,
+            format: {
+              indent: { style: TAB },
+              newline: "\n",
+              space: " ",
+              semicolons: true
+            }
+          });
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function formatJsBlock(codeText) {
+        return formatWithEsprima(codeText) || formatLooseJS(codeText);
+      }
+
       function formatCode() {
         const raw = code.value || "";
         const text = raw.trim();
@@ -459,7 +488,7 @@
         const wrapper = detectWrapper(raw);
         if (wrapper) {
           const bodyText = (wrapper.body || "").trim();
-          const formattedBody = bodyText ? formatLooseJS(bodyText) : "";
+          const formattedBody = bodyText ? formatJsBlock(bodyText) : "";
           let wrapped = "";
           if (wrapper.type === "prefix") {
             wrapped = wrapper.prefix + (formattedBody ? "\n" + formattedBody : "");
@@ -481,20 +510,13 @@
         let formatted = tryFormatJSON(text);
         
         if (!formatted) {
-            // 2. 尝试宽松 JS/JSON
-            if (text.startsWith("{") || text.startsWith("[") || text.includes("function") || text.includes("var ")) {
-                try {
-                    formatted = formatLooseJS(text);
-                } catch (e) {
-                    console.error(e);
-                }
-            } else if (text.includes("<") && text.includes(">")) {
-                // 3. 简单的 HTML 缩进
-                formatted = formatHtml(text);
-            } else {
-                // 4. 通用保底
-                formatted = formatLooseJS(text);
-            }
+          if (text.includes("<") && text.includes(">")) {
+            // 2. 简单的 HTML 缩进
+            formatted = formatHtml(text);
+          } else {
+            // 3. JS / 其他脚本
+            formatted = formatJsBlock(text);
+          }
         }
 
         if (formatted) {
@@ -617,7 +639,16 @@
           const currentLineStart = code.value.lastIndexOf("\n", cursor - 1) + 1;
           const currentLine = code.value.substring(currentLineStart, cursor);
           const indent = (currentLine.match(/^\s*/) || [""])[0];
-          const extraIndent = /[{[:]\s*$/.test(currentLine) ? TAB : "";
+          const extraIndent = /[{[]\s*$/.test(currentLine) ? TAB : "";
+          const nextChar = code.value[cursor] || "";
+          if (extraIndent && (nextChar === "}" || nextChar === "]")) {
+            const insert = "\n" + indent + extraIndent + "\n" + indent;
+            code.setRangeText(insert, cursor, cursor, "end");
+            const pos = cursor + 1 + indent.length + extraIndent.length;
+            code.setSelectionRange(pos, pos);
+            code.dispatchEvent(new Event("input"));
+            return;
+          }
           insertText("\n" + indent + extraIndent);
         }
       });
