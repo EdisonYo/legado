@@ -33,6 +33,7 @@ import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
+import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.UrlOptionDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
@@ -60,12 +61,26 @@ import splitties.views.bottomPadding
 class BookSourceEditActivity :
     VMBaseActivity<ActivityBookSourceEditBinding, BookSourceEditViewModel>(),
     KeyboardToolPop.CallBack,
-    VariableDialog.Callback {
+    VariableDialog.Callback,
+    CodeDialog.Callback {
 
     override val binding by viewBinding(ActivityBookSourceEditBinding::inflate)
     override val viewModel by viewModels<BookSourceEditViewModel>()
 
-    private val adapter by lazy { BookSourceEditAdapter() }
+    private val largeEditRequests = linkedMapOf<String, EditEntity>()
+    private val adapter by lazy {
+        BookSourceEditAdapter { entity ->
+            val requestId = java.util.UUID.randomUUID().toString()
+            largeEditRequests[requestId] = entity
+            showDialogFragment(
+                CodeDialog(
+                    entity.value.orEmpty(),
+                    disableEdit = false,
+                    requestId = requestId
+                )
+            )
+        }
+    }
     private val sourceEntities: ArrayList<EditEntity> = ArrayList()
     private val searchEntities: ArrayList<EditEntity> = ArrayList()
     private val exploreEntities: ArrayList<EditEntity> = ArrayList()
@@ -660,6 +675,15 @@ class BookSourceEditActivity :
 
     override fun setVariable(key: String, variable: String?) {
         viewModel.bookSource?.setVariable(variable)
+    }
+
+    override fun onCodeSave(code: String, requestId: String?) {
+        val entity = requestId?.let { largeEditRequests.remove(it) } ?: return
+        entity.value = code
+        val index = adapter.editEntities.indexOf(entity)
+        if (index >= 0) {
+            adapter.notifyItemChanged(index)
+        }
     }
 
 }
