@@ -8,7 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
-import io.legado.app.databinding.ItemSourceEditBinding
+import io.legado.app.databinding.ItemSourceEditWebBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
@@ -30,7 +30,7 @@ class BookSourceEditAdapter(
         }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MyViewHolder {
-        val binding = ItemSourceEditBinding
+        val binding = ItemSourceEditWebBinding
             .inflate(LayoutInflater.from(parent.context), parent, false)
         binding.editText.addLegadoPattern()
         binding.editText.addJsonPattern()
@@ -46,7 +46,7 @@ class BookSourceEditAdapter(
         return editEntities.size
     }
 
-    inner class MyViewHolder(val binding: ItemSourceEditBinding) :
+    inner class MyViewHolder(val binding: ItemSourceEditWebBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
         fun bind(editEntity: EditEntity) = binding.run {
@@ -89,23 +89,22 @@ class BookSourceEditAdapter(
                 }
             )
             textInputLayout.hint = editEntity.hint
+            btnWebEdit.setOnClickListener {
+                onUnsafeTextEdit?.invoke(editEntity)
+            }
             if (isUnsafeText) {
                 editText.isCursorVisible = false
                 editText.isFocusable = false
                 editText.isFocusableInTouchMode = false
-                editText.setOnClickListener {
-                    onUnsafeTextEdit?.invoke(editEntity)
-                }
-                editText.setOnLongClickListener {
-                    onUnsafeTextEdit?.invoke(editEntity)
-                    true
-                }
+                editText.setOnClickListener(null)
+                editText.setOnLongClickListener(null)
             } else {
                 editText.isCursorVisible = true
                 editText.isFocusable = true
                 editText.isFocusableInTouchMode = true
                 editText.setOnClickListener(null)
                 editText.setOnLongClickListener(null)
+                editText.onFocusChangeListener = null
                 val textWatcher = object : TextWatcher {
                     override fun beforeTextChanged(
                         s: CharSequence,
@@ -140,9 +139,9 @@ class BookSourceEditAdapter(
         for (i in 0 until limit) {
             val ch = text[i]
             val type = Character.getType(ch)
-            val isCombining = type == Character.NON_SPACING_MARK ||
-                type == Character.COMBINING_SPACING_MARK ||
-                type == Character.ENCLOSING_MARK
+            val isCombining = type == Character.NON_SPACING_MARK.toInt() ||
+                type == Character.COMBINING_SPACING_MARK.toInt() ||
+                type == Character.ENCLOSING_MARK.toInt()
             if (isCombining) {
                 combiningCount++
                 run++

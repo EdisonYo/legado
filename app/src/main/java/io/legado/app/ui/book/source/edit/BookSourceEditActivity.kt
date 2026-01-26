@@ -75,7 +75,8 @@ class BookSourceEditActivity :
             showDialogFragment(
                 WebCodeDialog(
                     entity.value.orEmpty(),
-                    requestId = requestId
+                    requestId = requestId,
+                    title = entity.hint
                 )
             )
         }

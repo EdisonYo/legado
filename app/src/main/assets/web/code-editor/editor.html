@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Legado Editor Pro</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --gutter-bg: #f5f5f5;
+      --gutter-text: #b0b0b0;
+      --text: #24292e;
+      --border: #e1e4e8;
+      --active-line: #f6f8fa;
+      --accent: #0366d6;
+      --toolbar-bg: #f8f9fa;
+      --selection: #b3d7ff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1e1e1e;
+        --gutter-bg: #252526;
+        --gutter-text: #858585;
+        --text: #d4d4d4;
+        --border: #3e3e42;
+        --active-line: #2d2d30;
+        --accent: #40a9ff;
+        --toolbar-bg: #252526;
+        --selection: #264f78;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    body {
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    #toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
+    }
+    #toolbar::-webkit-scrollbar { display: none; }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+      flex-shrink: 0;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--active-line);
+    }
+
+    #editor-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    #lines {
+      width: 45px;
+      padding: 10px 5px 10px 0;
+      background: var(--gutter-bg);
+      color: var(--gutter-text);
+      text-align: right;
+      font-size: 13px;
+      line-height: 1.5;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+      user-select: none;
+      white-space: pre;
+    }
+
+    #code {
+      flex: 1;
+      border: 0;
+      padding: 10px;
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      outline: none;
+      resize: none;
+      background: transparent;
+      color: var(--text);
+      overflow: auto;
+      white-space: pre;
+      tab-size: 2;
+    }
+    #code::selection { background: var(--selection); }
+
+    /* 搜索框 */
+    #search-box {
+      position: absolute;
+      top: 0; right: 0;
+      background: var(--toolbar-bg);
+      padding: 8px;
+      border-bottom: 1px solid var(--border);
+      border-left: 1px solid var(--border);
+      display: none;
+      align-items: center;
+      gap: 5px;
+      z-index: 10;
+    }
+    #search-box.visible { display: flex; }
+    #search-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      width: 120px;
+    }
+
+    #toast {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      z-index: 20;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div id="toolbar">
+    <button id="undoBtn" class="btn">↩</button>
+    <button id="redoBtn" class="btn">↪</button>
+    <button id="wrapBtn" class="btn">换行</button>
+    <button id="formatBtn" class="btn">格式化</button>
+    <button id="searchToggleBtn" class="btn">🔍</button>
+  </div>
+
+  <div id="search-box">
+    <input id="search-input" type="text" placeholder="查找..." />
+    <button id="findNextBtn" class="btn">↓</button>
+    <button id="replaceBtn" class="btn">替换</button>
+    <button id="closeSearchBtn" class="btn" style="border:none;">×</button>
+  </div>
+
+  <div id="editor-container">
+    <div id="lines">1</div>
+    <textarea id="code" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    (function () {
+      const code = document.getElementById("code");
+      const lines = document.getElementById("lines");
+      const toast = document.getElementById("toast");
+      
+      let isWrap = false;
+      let historyStack = [];
+      let historyIndex = -1;
+      let lastValue = "";
+      
+      const TAB = "  "; // 2空格缩进
+
+      // --- 核心：行号逻辑 (性能优化版) ---
+      const updateLines = () => {
+        const val = code.value;
+        const lineCount = (val.match(/\n/g) || []).length + 1;
+        if (lines.getAttribute('data-lines') != lineCount) {
+           lines.textContent = Array.from({length: lineCount}, (_, i) => i + 1).join('\n');
+           lines.setAttribute('data-lines', lineCount);
+           lines.style.width = Math.max(3, String(lineCount).length + 1) + "ch";
+        }
+      };
+
+      // 滚动同步
+      let ticking = false;
+      code.addEventListener("scroll", () => {
+        if (!ticking) {
+          window.requestAnimationFrame(() => {
+            lines.scrollTop = code.scrollTop;
+            ticking = false;
+          });
+          ticking = true;
+        }
+      });
+
+      code.addEventListener("input", () => {
+        updateLines();
+        saveHistory();
+      });
+
+      // --- 历史记录 ---
+      function saveHistory() {
+        const val = code.value;
+        if (val === lastValue) return;
+        if (historyIndex < historyStack.length - 1) {
+          historyStack = historyStack.slice(0, historyIndex + 1);
+        }
+        historyStack.push(val);
+        historyIndex++;
+        if (historyStack.length > 50) {
+          historyStack.shift();
+          historyIndex--;
+        }
+        lastValue = val;
+      }
+
+      function undo() {
+        if (historyIndex > 0) {
+          historyIndex--;
+          code.value = historyStack[historyIndex];
+          lastValue = code.value;
+          updateLines();
+          showToast("撤销");
+        }
+      }
+
+      function redo() {
+        if (historyIndex < historyStack.length - 1) {
+          historyIndex++;
+          code.value = historyStack[historyIndex];
+          lastValue = code.value;
+          updateLines();
+          showToast("重做");
+        }
+      }
+
+      saveHistory(); // 初始化
+
+      // --- 格式化核心算法 (修复版) ---
+      
+      // 1. 严格 JSON 格式化 (最优先)
+      function tryFormatJSON(text) {
+        try {
+          return JSON.stringify(JSON.parse(text), null, TAB);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // 2. 宽松 JS/JSON 格式化（两阶段：规范换行 + 缩进）
+      function normalizeJs(text) {
+        let out = "";
+        let inString = false;
+        let stringChar = "";
+        let escape = false;
+        let inLineComment = false;
+        let inBlockComment = false;
+        let parenDepth = 0;
+
+        for (let i = 0; i < text.length; i++) {
+          const ch = text[i];
+          const next = text[i + 1];
+
+          if (inLineComment) {
+            out += ch;
+            if (ch === "\n") inLineComment = false;
+            continue;
+          }
+          if (inBlockComment) {
+            out += ch;
+            if (ch === "*" && next === "/") {
+              out += next;
+              i++;
+              inBlockComment = false;
+            }
+            continue;
+          }
+
+          if (inString) {
+            out += ch;
+            if (escape) {
+              escape = false;
+            } else if (ch === "\\") {
+              escape = true;
+            } else if (ch === stringChar) {
+              inString = false;
+              stringChar = "";
+            }
+            continue;
+          }
+
+          if (ch === "/" && next === "/") {
+            out += ch + next;
+            i++;
+            inLineComment = true;
+            continue;
+          }
+          if (ch === "/" && next === "*") {
+            out += ch + next;
+            i++;
+            inBlockComment = true;
+            continue;
+          }
+
+          if (ch === '"' || ch === "'" || ch === "`") {
+            inString = true;
+            stringChar = ch;
+            out += ch;
+            continue;
+          }
+
+          if (ch === "(") {
+            parenDepth++;
+            out += ch;
+            continue;
+          }
+          if (ch === ")") {
+            parenDepth = Math.max(parenDepth - 1, 0);
+            out += ch;
+            continue;
+          }
+
+          if (ch === "{") {
+            out += "{\n";
+            continue;
+          }
+          if (ch === "}") {
+            out += "\n}\n";
+            continue;
+          }
+          if (ch === ";" && parenDepth === 0) {
+            out += ";\n";
+            continue;
+          }
+          if (ch === "," && parenDepth === 0) {
+            out += ",\n";
+            continue;
+          }
+          if (ch === "\r") continue;
+
+          out += ch;
+        }
+        return out.replace(/\n{2,}/g, "\n");
+      }
+
+      function countBraceDelta(line) {
+        let open = 0;
+        let close = 0;
+        let inString = false;
+        let stringChar = "";
+        let escape = false;
+
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          const next = line[i + 1];
+
+          if (!inString && ch === "/" && next === "/") {
+            break;
+          }
+          if (!inString && ch === "/" && next === "*") {
+            const end = line.indexOf("*/", i + 2);
+            if (end === -1) break;
+            i = end + 1;
+            continue;
+          }
+
+          if (inString) {
+            if (escape) {
+              escape = false;
+            } else if (ch === "\\") {
+              escape = true;
+            } else if (ch === stringChar) {
+              inString = false;
+              stringChar = "";
+            }
+            continue;
+          }
+
+          if (ch === '"' || ch === "'" || ch === "`") {
+            inString = true;
+            stringChar = ch;
+            continue;
+          }
+
+          if (ch === "{" || ch === "[") open++;
+          if (ch === "}" || ch === "]") close++;
+        }
+        return open - close;
+      }
+
+      function indentJsLines(text) {
+        const lines = text.split("\n");
+        const out = [];
+        let indent = 0;
+
+        lines.forEach(function (line) {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+
+          if (/^[}\]]/.test(trimmed)) indent = Math.max(indent - 1, 0);
+
+          let lineIndent = indent;
+          if (/^(case\b|default\b)/.test(trimmed)) {
+            lineIndent = Math.max(indent - 1, 0);
+          }
+          out.push(TAB.repeat(lineIndent) + trimmed);
+
+          let delta = countBraceDelta(trimmed);
+          indent += delta;
+
+          if (/^(case\b|default\b)/.test(trimmed) && /:\s*$/.test(trimmed)) {
+            indent += 1;
+          }
+        });
+
+        return out.join("\n");
+      }
+
+      function formatLooseJS(text) {
+        const normalized = normalizeJs(text);
+        return indentJsLines(normalized);
+      }
+
+      function formatCode() {
+        const text = code.value.trim();
+        if (!text) return;
+        
+        // 1. 尝试标准 JSON
+        let formatted = tryFormatJSON(text);
+        
+        if (!formatted) {
+            // 2. 尝试宽松 JS/JSON
+            if (text.startsWith("{") || text.startsWith("[") || text.includes("function") || text.includes("var ")) {
+                try {
+                    formatted = formatLooseJS(text);
+                } catch (e) {
+                    console.error(e);
+                }
+            } else if (text.includes("<") && text.includes(">")) {
+                // 3. 简单的 HTML 缩进
+                formatted = formatHtml(text);
+            } else {
+                // 4. 通用保底
+                formatted = formatLooseJS(text);
+            }
+        }
+
+        if (formatted) {
+            code.value = formatted;
+            updateLines();
+            saveHistory();
+            showToast("格式化完成");
+        } else {
+            showToast("格式化失败");
+        }
+      }
+
+      function formatHtml(html) {
+        let tab = TAB;
+        let result = '';
+        let indent= '';
+        html.split(/>\s*</).forEach(function(element) {
+          if (element.match( /^\/\w/ )) {
+            indent = indent.substring(tab.length);
+          }
+          result += indent + '<' + element + '>\r\n';
+          // 排除 void tags (不需要闭合的标签)
+          if (element.match( /^<?\w[^>]*[^\/]$/ ) && !/^br|^img|^hr|^input|^meta|^link/i.test(element) ) { 
+            indent += tab;              
+          }
+        });
+        return result.substring(1, result.length-3);
+      }
+
+      // --- 事件绑定 ---
+      document.getElementById("undoBtn").onclick = undo;
+      document.getElementById("redoBtn").onclick = redo;
+      document.getElementById("formatBtn").onclick = formatCode;
+      
+      const wrapBtn = document.getElementById("wrapBtn");
+      wrapBtn.onclick = () => {
+        isWrap = !isWrap;
+        code.style.whiteSpace = isWrap ? "pre-wrap" : "pre";
+        wrapBtn.classList.toggle("active", isWrap);
+        updateLines();
+        showToast("自动换行: " + (isWrap ? "开" : "关"));
+      };
+
+      // 搜索功能
+      const searchBox = document.getElementById("search-box");
+      const searchInput = document.getElementById("search-input");
+      document.getElementById("searchToggleBtn").onclick = () => {
+        searchBox.classList.toggle("visible");
+        if (searchBox.classList.contains("visible")) searchInput.focus();
+      };
+      document.getElementById("closeSearchBtn").onclick = () => searchBox.classList.remove("visible");
+
+      document.getElementById("findNextBtn").onclick = () => {
+        const query = searchInput.value;
+        if (!query) return;
+        const text = code.value;
+        const startPos = code.selectionEnd;
+        let index = text.indexOf(query, startPos);
+        if (index === -1) { index = text.indexOf(query, 0); showToast("已回到顶部"); }
+        if (index !== -1) {
+            code.setSelectionRange(index, index + query.length);
+            code.focus();
+            const lineHeight = 20; 
+            const linesBefore = text.substring(0, index).split('\n').length;
+            code.scrollTop = (linesBefore * lineHeight) - (code.clientHeight / 2);
+        } else { showToast("未找到内容"); }
+      };
+
+      document.getElementById("replaceBtn").onclick = () => {
+          const query = searchInput.value;
+          const replacement = prompt("替换为:");
+          if (query && replacement !== null) {
+              code.value = code.value.split(query).join(replacement);
+              updateLines(); saveHistory(); showToast("全部替换完成");
+          }
+      };
+
+      function insertText(text) {
+        const start = code.selectionStart;
+        const end = code.selectionEnd;
+        code.setRangeText(text, start, end, "end");
+        code.dispatchEvent(new Event('input'));
+      }
+
+      // 快捷键增强
+      code.addEventListener("keydown", function (e) {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          insertText(TAB);
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const cursor = code.selectionStart;
+          const currentLineStart = code.value.lastIndexOf("\n", cursor - 1) + 1;
+          const currentLine = code.value.substring(currentLineStart, cursor);
+          const indent = (currentLine.match(/^\s*/) || [""])[0];
+          const extraIndent = /[{[:]\s*$/.test(currentLine) ? TAB : "";
+          insertText("\n" + indent + extraIndent);
+        }
+      });
+
+      function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 1500);
+      }
+
+      // --- Android Interface ---
+      function b64ToUtf8(b64) {
+        try { return decodeURIComponent(escape(window.atob(b64))); } catch (e) { return ""; }
+      }
+
+      window.setCodeFromAndroid = function (b64) {
+        code.value = b64ToUtf8(b64);
+        updateLines();
+        saveHistory();
+        code.scrollTop = 0;
+        lines.scrollTop = 0;
+      };
+
+      window.__save = function () {
+        const val = code.value || "";
+        if (window.Android && window.Android.save) window.Android.save(val);
+        else console.log("Mock Save:", val);
+      };
+      
+      updateLines();
+    })();
+  </script>
+</body>
+</html>

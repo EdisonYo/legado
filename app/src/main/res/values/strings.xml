@@ -861,7 +861,8 @@ Placeholders:
     <string name="starting_download">Starting download</string>
     <string name="already_in_download">This book is already in Download list</string>
     <string name="click_to_open">Click to open</string>
-    <string name="combining_text_placeholder">Content is complex. Tap to edit.</string>
+    <string name="combining_text_placeholder">Content contains complex characters.</string>
+    <string name="webview_edit">Edit in WebView</string>
     <string name="follow_public_account_summary">Follow [开源阅读] to support me by clicking on ads</string>
     <string name="weChat_appreciation_code">WeChat Tipping Code</string>
     <string name="alipay">AliPay</string>

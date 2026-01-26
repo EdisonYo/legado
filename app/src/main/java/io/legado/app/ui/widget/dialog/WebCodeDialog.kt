@@ -1,11 +1,15 @@
 package io.legado.app.ui.widget.dialog
 
 import android.annotation.SuppressLint
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
+import android.webkit.WebViewClient
 import android.webkit.WebView
 import io.legado.app.R
 import io.legado.app.base.BaseDialogFragment
@@ -18,30 +22,43 @@ import android.util.Base64
 
 class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
 
-    constructor(code: String, requestId: String? = null) : this() {
+    constructor(code: String, requestId: String? = null, title: String? = null) : this() {
         arguments = Bundle().apply {
             putString("code", code)
             putString("requestId", requestId)
+            putString("title", title)
         }
     }
 
     private val binding by viewBinding(DialogWebCodeViewBinding::bind)
-    private var pendingCode: String? = null
+    private var pendingCode: String = ""
+    private var pageReady = false
 
     override fun onStart() {
         super.onStart()
-        setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
+        dialog?.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         binding.toolBar.setBackgroundColor(primaryColor)
+        arguments?.getString("title")?.let {
+            binding.toolBar.title = it
+        }
         binding.toolBar.inflateMenu(R.menu.code_edit)
         binding.toolBar.menu.applyTint(requireContext())
+        val saveItem = binding.toolBar.menu.findItem(R.id.menu_save)
+        saveItem?.isEnabled = false
         binding.toolBar.setOnMenuItemClickListener {
             when (it.itemId) {
                 R.id.menu_save -> {
-                    binding.webView.evaluateJavascript("window.__save && window.__save();", null)
+                    if (pageReady) {
+                        binding.webView.evaluateJavascript("window.__save && window.__save();", null)
+                    }
                     return@setOnMenuItemClickListener true
                 }
             }
@@ -56,13 +73,21 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
         }
         binding.webView.addJavascriptInterface(JsBridge(), "Android")
         pendingCode = arguments?.getString("code").orEmpty()
-        binding.webView.loadDataWithBaseURL(
-            null,
-            buildHtml(pendingCode.orEmpty()),
-            "text/html",
-            "utf-8",
-            null
+        val encoded = Base64.encodeToString(
+            pendingCode.orEmpty().toByteArray(Charsets.UTF_8),
+            Base64.NO_WRAP
         )
+        binding.webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                pageReady = true
+                saveItem?.isEnabled = true
+                view?.evaluateJavascript(
+                    "window.setCodeFromAndroid && window.setCodeFromAndroid('$encoded');",
+                    null
+                )
+            }
+        }
+        binding.webView.loadUrl("file:///android_asset/web/code-editor/editor.html")
     }
 
     override fun onDestroyView() {
@@ -77,76 +102,20 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
         super.onDestroyView()
     }
 
-    private fun buildHtml(code: String): String {
-        val encoded = Base64.encodeToString(code.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-        return """
-            <!doctype html>
-            <html>
-            <head>
-              <meta charset="utf-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1" />
-              <style>
-                html, body { margin:0; padding:0; height:100%; }
-                body { font-family: monospace; background:#ffffff; }
-                textarea {
-                  box-sizing:border-box;
-                  width:100%;
-                  height:100%;
-                  border:0;
-                  padding:12px;
-                  font-size:14px;
-                  line-height:1.4;
-                  outline:none;
-                  resize:none;
-                }
-              </style>
-            </head>
-            <body>
-              <textarea id="code"></textarea>
-              <script>
-                function b64ToUtf8(b64) {
-                  try {
-                    var bin = atob(b64);
-                    var bytes = new Uint8Array(bin.length);
-                    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    if (window.TextDecoder) {
-                      return new TextDecoder("utf-8").decode(bytes);
-                    }
-                    var esc = "";
-                    for (var j = 0; j < bytes.length; j++) {
-                      esc += "%" + ("00" + bytes[j].toString(16)).slice(-2);
-                    }
-                    return decodeURIComponent(esc);
-                  } catch (e) {
-                    return "";
-                  }
-                }
-                var data = b64ToUtf8("$encoded");
-                document.getElementById("code").value = data;
-                window.__save = function() {
-                  var value = document.getElementById("code").value || "";
-                  if (window.Android && window.Android.save) {
-                    window.Android.save(value);
-                  }
-                };
-              </script>
-            </body>
-            </html>
-        """.trimIndent()
-    }
-
     private inner class JsBridge {
         @JavascriptInterface
         fun save(text: String) {
-            if (text == pendingCode) {
+            binding.root.post {
+                if (text == pendingCode) {
+                    dismissAllowingStateLoss()
+                    return@post
+                }
+                pendingCode = text
+                val requestId = arguments?.getString("requestId")
+                (parentFragment as? Callback)?.onCodeSave(text, requestId)
+                    ?: (activity as? Callback)?.onCodeSave(text, requestId)
                 dismissAllowingStateLoss()
-                return
             }
-            pendingCode = text
-            val requestId = arguments?.getString("requestId")
-            (parentFragment as? Callback)?.onCodeSave(text, requestId)
-                ?: (activity as? Callback)?.onCodeSave(text, requestId)
-            dismissAllowingStateLoss()
         }
     }
 

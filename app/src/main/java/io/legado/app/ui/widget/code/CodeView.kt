@@ -30,10 +30,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var highlightWhileTextChanging = true
     private var hasErrors = false
     private var mRemoveErrorsWhenTextChanged = true
-    private var maxHighlightLength = 8000
-    private var largeTextMode = false
-    private var largeTextMaxLines = 12
-    private var normalMaxLines = -1
     private val mUpdateHandler = Handler(Looper.getMainLooper())
     private var mAutoCompleteTokenizer: Tokenizer? = null
     private val displayDensity = resources.displayMetrics.density
@@ -66,8 +62,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             count: Int
         ) {
             if (!modified) return
-            updateLargeTextMode(editableText)
-            if (largeTextMode) return
             if (highlightWhileTextChanging) {
                 if (mSyntaxPatternMap.isNotEmpty()) {
                     convertTabs(editableText, start, count)
@@ -80,8 +74,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         override fun afterTextChanged(editable: Editable) {
             if (!highlightWhileTextChanging) {
                 if (!modified) return
-                updateLargeTextMode(editable)
-                if (largeTextMode) return
                 cancelHighlighterRender()
                 if (mSyntaxPatternMap.isNotEmpty()) {
                     convertTabs(editableText, start, count)
@@ -249,14 +241,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         cancelHighlighterRender()
         removeAllErrorLines()
         modified = false
-        val content = if (text.length > maxHighlightLength) {
-            text
-        } else {
-            highlight(SpannableStringBuilder(text))
-        }
-        setText(content)
+        setText(highlight(SpannableStringBuilder(text)))
         modified = true
-        updateLargeTextMode(editableText)
     }
 
     fun setTabWidth(characters: Int) {
@@ -392,42 +378,6 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
 
     fun setHighlightWhileTextChanging(updateWhileTextChanging: Boolean) {
         highlightWhileTextChanging = updateWhileTextChanging
-    }
-
-    fun setMaxHighlightLength(length: Int) {
-        maxHighlightLength = length.coerceAtLeast(0)
-        updateLargeTextMode(editableText)
-    }
-
-    fun setLargeTextMaxLines(lines: Int) {
-        largeTextMaxLines = lines.coerceAtLeast(1)
-        updateLargeTextMode(editableText)
-    }
-
-    private fun updateLargeTextMode(editable: Editable?) {
-        editable ?: return
-        val tooLarge = maxHighlightLength > 0 && editable.length > maxHighlightLength
-        if (tooLarge == largeTextMode) return
-        largeTextMode = tooLarge
-        if (tooLarge) {
-            if (normalMaxLines < 0) {
-                normalMaxLines = maxLines
-            }
-            if (maxLines > largeTextMaxLines) {
-                maxLines = largeTextMaxLines
-            }
-            cancelHighlighterRender()
-            try {
-                clearSpans(editable)
-            } catch (_: Throwable) {
-            }
-            removeAllErrorLines()
-        } else {
-            if (normalMaxLines > 0 && maxLines != normalMaxLines) {
-                maxLines = normalMaxLines
-            }
-            reHighlightSyntax()
-        }
     }
 
     private inner class TabWidthSpan : ReplacementSpan() {
