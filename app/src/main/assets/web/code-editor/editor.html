@@ -175,8 +175,9 @@
 
   <div id="toast"></div>
 
-  <script src="esprima.min.js"></script>
-  <script src="escodegen.browser.min.js"></script>
+  <script src="standalone.min.js"></script>
+  <script src="babel.js"></script>
+  <script src="estree.js"></script>
   <script>
     (function () {
       const code = document.getElementById("code");
@@ -187,6 +188,8 @@
       let historyStack = [];
       let historyIndex = -1;
       let lastValue = "";
+      let lastFormatter = "";
+      let lastPrettierError = "";
       
       const TAB = "  "; // 2空格缩进
 
@@ -278,6 +281,10 @@
         let parenDepth = 0;
         let braceDepth = 0;
         let ternaryDepth = 0;
+        let inRegex = false;
+        let inCharClass = false;
+        let regexEscape = false;
+        let lastNonSpace = "";
 
         for (let i = 0; i < text.length; i++) {
           const ch = text[i];
@@ -294,6 +301,30 @@
               out += next;
               i++;
               inBlockComment = false;
+            }
+            continue;
+          }
+
+          if (inRegex) {
+            out += ch;
+            if (regexEscape) {
+              regexEscape = false;
+              continue;
+            }
+            if (ch === "\\") {
+              regexEscape = true;
+              continue;
+            }
+            if (ch === "[" && !inCharClass) {
+              inCharClass = true;
+              continue;
+            }
+            if (ch === "]" && inCharClass) {
+              inCharClass = false;
+              continue;
+            }
+            if (ch === "/" && !inCharClass) {
+              inRegex = false;
             }
             continue;
           }
@@ -323,6 +354,14 @@
             inBlockComment = true;
             continue;
           }
+          if (ch === "/" && next !== "/" && next !== "*") {
+            const regexStart = !lastNonSpace || /[=({\[;,?:!&|+\-*%^~<>]/.test(lastNonSpace);
+            if (regexStart) {
+              inRegex = true;
+              out += ch;
+              continue;
+            }
+          }
 
           if (ch === '"' || ch === "'" || ch === "`") {
             inString = true;
@@ -345,34 +384,59 @@
           if (ch === "{") {
             braceDepth++;
             out += "{\n";
+            if (!/\s/.test(ch)) lastNonSpace = ch;
             continue;
           }
           if (ch === "}") {
             braceDepth = Math.max(braceDepth - 1, 0);
             out += "\n}\n";
+            if (!/\s/.test(ch)) lastNonSpace = ch;
+            continue;
+          }
+          if (ch === "?" && next === "?") {
+            const next2 = text[i + 2] || "";
+            if (next2 === "=") {
+              out += "??=";
+              i += 2;
+            } else {
+              out += "??";
+              i += 1;
+            }
+            lastNonSpace = "?";
+            continue;
+          }
+          if (ch === "?" && next === ".") {
+            out += "?.";
+            i += 1;
+            lastNonSpace = ".";
             continue;
           }
           if (ch === "?" && next !== "?" && parenDepth === 0) {
             ternaryDepth += 1;
             out += "\n? ";
+            if (!/\s/.test(ch)) lastNonSpace = ch;
             continue;
           }
           if (ch === ":" && ternaryDepth > 0 && parenDepth === 0 && braceDepth === 0) {
             ternaryDepth -= 1;
             out += "\n: ";
+            if (!/\s/.test(ch)) lastNonSpace = ch;
             continue;
           }
           if (ch === ";" && parenDepth === 0) {
             out += ";\n";
+            if (!/\s/.test(ch)) lastNonSpace = ch;
             continue;
           }
           if (ch === "," && parenDepth === 0) {
             out += ",\n";
+            if (!/\s/.test(ch)) lastNonSpace = ch;
             continue;
           }
           if (ch === "\r") continue;
 
           out += ch;
+          if (!/\s/.test(ch)) lastNonSpace = ch;
         }
         return out.replace(/\n{2,}/g, "\n");
       }
@@ -474,79 +538,123 @@
         return indentJsLines(normalized);
       }
 
-      function formatWithEsprima(codeText) {
-        if (!window.esprima || !window.escodegen) return null;
+      async function formatWithPrettier(codeText, parser) {
+        if (!window.prettier || !window.prettierPlugins) {
+          lastPrettierError = "Prettier 未加载";
+          return null;
+        }
+        const plugins = [];
+        if (window.prettierPlugins.babel) plugins.push(window.prettierPlugins.babel);
+        if (window.prettierPlugins.estree) plugins.push(window.prettierPlugins.estree);
+        if (!plugins.length) {
+          lastPrettierError = "Prettier 插件未加载";
+          return null;
+        }
         try {
-          const ast = esprima.parseScript(codeText, {
-            comment: true,
-            range: true,
-            tokens: true
-          });
-          escodegen.attachComments(ast, ast.comments, ast.tokens);
-          return escodegen.generate(ast, {
-            comment: true,
-            format: {
-              indent: { style: TAB },
-              newline: "\n",
-              space: " ",
-              semicolons: true
-            }
+          return await window.prettier.format(codeText, {
+            parser: parser || "babel",
+            plugins: plugins,
+            tabWidth: 2,
+            useTabs: false,
+            singleQuote: false,
+            trailingComma: "es5",
+            printWidth: 120
           });
         } catch (e) {
+          lastPrettierError = e && e.message ? e.message : "Prettier 解析失败";
+          console.error("Prettier error:", e);
           return null;
         }
       }
 
-      function formatJsBlock(codeText) {
-        return formatWithEsprima(codeText) || formatLooseJS(codeText);
+      async function formatJsBlock(codeText) {
+        const pretty = await formatWithPrettier(codeText, "babel");
+        if (pretty) {
+          lastFormatter = "prettier";
+          return pretty;
+        }
+        lastFormatter = "loose";
+        return formatLooseJS(codeText);
       }
 
-      function formatCode() {
+      function looksLikeHtml(text) {
+        const trimmed = (text || "").trim();
+        if (!trimmed) return false;
+        if (!/^</.test(trimmed)) return false;
+        return /^<(?:!doctype|html|head|body|div|span|p|section|article|script|style)\b/i.test(trimmed) ||
+          (/^<[^>]+>/.test(trimmed) && /<\/[^>]+>/.test(trimmed));
+      }
+
+      async function formatCode() {
         const raw = code.value || "";
         const text = raw.trim();
         if (!text) return;
+        lastFormatter = "";
+        lastPrettierError = "";
+        showToast("格式化中...");
+        await new Promise(requestAnimationFrame);
 
-        const wrapper = detectWrapper(raw);
-        if (wrapper) {
-          const bodyText = (wrapper.body || "").trim();
-          const formattedBody = bodyText ? formatJsBlock(bodyText) : "";
-          let wrapped = "";
-          if (wrapper.type === "prefix") {
-            wrapped = wrapper.prefix + (formattedBody ? "\n" + formattedBody : "");
-          } else if (wrapper.type === "tag") {
-            wrapped = wrapper.open + (formattedBody ? "\n" + formattedBody + "\n" : "") + wrapper.close;
-          } else if (wrapper.type === "moustache") {
-            wrapped = "{{" + (formattedBody ? "\n" + formattedBody + "\n" : "") + "}}";
-          } else {
-            wrapped = formattedBody;
-          }
-          code.value = wrapped;
-          updateLines();
-          saveHistory();
-          showToast("格式化完成");
-          return;
-        }
-        
-        // 1. 尝试标准 JSON
-        let formatted = tryFormatJSON(text);
-        
-        if (!formatted) {
-          if (text.includes("<") && text.includes(">")) {
-            // 2. 简单的 HTML 缩进
-            formatted = formatHtml(text);
-          } else {
-            // 3. JS / 其他脚本
-            formatted = formatJsBlock(text);
-          }
-        }
-
-        if (formatted) {
-            code.value = formatted;
+        try {
+          const wrapper = detectWrapper(raw);
+          if (wrapper) {
+            const bodyText = (wrapper.body || "").trim();
+            const formattedBody = bodyText ? await formatJsBlock(bodyText) : "";
+            let wrapped = "";
+            if (wrapper.type === "prefix") {
+              wrapped = wrapper.prefix + (formattedBody ? "\n" + formattedBody : "");
+            } else if (wrapper.type === "tag") {
+              wrapped = wrapper.open + (formattedBody ? "\n" + formattedBody + "\n" : "") + wrapper.close;
+            } else if (wrapper.type === "moustache") {
+              wrapped = "{{" + (formattedBody ? "\n" + formattedBody + "\n" : "") + "}}";
+            } else {
+              wrapped = formattedBody;
+            }
+            code.value = wrapped;
             updateLines();
             saveHistory();
-            showToast("格式化完成");
-        } else {
-            showToast("格式化失败");
+            const modeLabel = lastFormatter === "prettier" ? "Prettier" : "宽松";
+            showToast("格式化完成（" + modeLabel + "）");
+            return;
+          }
+
+          // 1. 尝试标准 JSON
+          let formatted = tryFormatJSON(text);
+          if (!formatted) {
+            const prettyJson = await formatWithPrettier(text, "json");
+            if (prettyJson) {
+              formatted = prettyJson.trimEnd();
+              lastFormatter = "prettier";
+            }
+          }
+
+          if (!formatted) {
+            if (looksLikeHtml(text)) {
+              // 2. 简单的 HTML 缩进
+              formatted = formatHtml(text);
+            } else {
+              // 3. JS / 其他脚本
+              formatted = await formatJsBlock(text);
+            }
+          }
+
+          if (formatted) {
+              code.value = formatted;
+              updateLines();
+              saveHistory();
+            const modeLabel = lastFormatter === "prettier" ? "Prettier" : "宽松";
+            if (lastFormatter === "loose" && lastPrettierError) {
+              const err = String(lastPrettierError || "").trim();
+              const shortErr = err.length > 80 ? err.slice(0, 80) + "…" : err;
+              showToast("格式化完成（宽松，Prettier失败：" + shortErr + "）");
+            } else {
+              showToast("格式化完成（" + modeLabel + "）");
+            }
+          } else {
+              showToast("格式化失败");
+          }
+        } catch (e) {
+          console.error(e);
+          showToast("格式化失败");
         }
       }
 
