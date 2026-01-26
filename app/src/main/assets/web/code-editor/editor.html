@@ -176,7 +176,7 @@
   <div id="toast"></div>
 
   <script src="esprima.min.js"></script>
-  <script src="escodegen.min.js"></script>
+  <script src="escodegen.browser.min.js"></script>
   <script>
     (function () {
       const code = document.getElementById("code");
@@ -276,6 +276,8 @@
         let inLineComment = false;
         let inBlockComment = false;
         let parenDepth = 0;
+        let braceDepth = 0;
+        let ternaryDepth = 0;
 
         for (let i = 0; i < text.length; i++) {
           const ch = text[i];
@@ -341,11 +343,23 @@
           }
 
           if (ch === "{") {
+            braceDepth++;
             out += "{\n";
             continue;
           }
           if (ch === "}") {
+            braceDepth = Math.max(braceDepth - 1, 0);
             out += "\n}\n";
+            continue;
+          }
+          if (ch === "?" && next !== "?" && parenDepth === 0) {
+            ternaryDepth += 1;
+            out += "\n? ";
+            continue;
+          }
+          if (ch === ":" && ternaryDepth > 0 && parenDepth === 0 && braceDepth === 0) {
+            ternaryDepth -= 1;
+            out += "\n: ";
             continue;
           }
           if (ch === ";" && parenDepth === 0) {
@@ -412,6 +426,7 @@
         const lines = text.split("\n");
         const out = [];
         let indent = 0;
+        let prevTrimmed = "";
 
         lines.forEach(function (line) {
           let trimmed = line.trim();
@@ -421,9 +436,14 @@
           const startsWithClose = /^[}\]]/.test(trimmed);
           if (startsWithClose) indent = Math.max(indent - 1, 0);
 
-          let lineIndent = indent;
-          if (/^(case\b|default\b)/.test(trimmed)) {
-            lineIndent = Math.max(indent - 1, 0);
+          const prevIsCase = /^(case\b|default\b)/.test(prevTrimmed);
+          const prevContinuation =
+            !prevIsCase &&
+            (/[=,+\-*/%&|^?:]$/.test(prevTrimmed) || /[({[]$/.test(prevTrimmed));
+
+          let lineIndent = indent + (prevContinuation ? 1 : 0);
+          if (/^[?:]/.test(trimmed)) {
+            lineIndent = indent + 1;
           }
           const canMerge =
             /^(else\b|catch\b|finally\b)/.test(trimmed) &&
@@ -443,6 +463,7 @@
           if (/^(case\b|default\b)/.test(trimmed) && /:\s*$/.test(trimmed)) {
             indent += 1;
           }
+          prevTrimmed = trimmed;
         });
 
         return out.join("\n");
