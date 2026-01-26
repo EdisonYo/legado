@@ -32,6 +32,8 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
     private var mRemoveErrorsWhenTextChanged = true
     private var maxHighlightLength = 8000
     private var largeTextMode = false
+    private var largeTextMaxLines = 12
+    private var normalMaxLines = -1
     private val mUpdateHandler = Handler(Looper.getMainLooper())
     private var mAutoCompleteTokenizer: Tokenizer? = null
     private val displayDensity = resources.displayMetrics.density
@@ -397,12 +399,23 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
         updateLargeTextMode(editableText)
     }
 
+    fun setLargeTextMaxLines(lines: Int) {
+        largeTextMaxLines = lines.coerceAtLeast(1)
+        updateLargeTextMode(editableText)
+    }
+
     private fun updateLargeTextMode(editable: Editable?) {
         editable ?: return
         val tooLarge = maxHighlightLength > 0 && editable.length > maxHighlightLength
         if (tooLarge == largeTextMode) return
         largeTextMode = tooLarge
         if (tooLarge) {
+            if (normalMaxLines < 0) {
+                normalMaxLines = maxLines
+            }
+            if (maxLines > largeTextMaxLines) {
+                maxLines = largeTextMaxLines
+            }
             cancelHighlighterRender()
             try {
                 clearSpans(editable)
@@ -410,6 +423,9 @@ class CodeView @JvmOverloads constructor(context: Context, attrs: AttributeSet? 
             }
             removeAllErrorLines()
         } else {
+            if (normalMaxLines > 0 && maxLines != normalMaxLines) {
+                maxLines = normalMaxLines
+            }
             reHighlightSyntax()
         }
     }
