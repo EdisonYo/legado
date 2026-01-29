@@ -148,11 +148,14 @@
       display: flex;
       min-height: 0;
       padding-bottom: env(safe-area-inset-bottom);
+      overflow: hidden;
     }
 
     #editor {
       flex: 1;
       min-height: 0;
+      min-width: 0;
+      overflow: hidden;
     }
 
     .cm-editor {
@@ -563,7 +566,10 @@
               fontFamily: "inherit",
               fontSize: px + "px",
               lineHeight: "1.5",
-              overflow: "auto"
+              overflow: "auto",
+
+              "scroll-behavior": "smooth",
+              "-webkit-overflow-scrolling": "touch"
             },
             ".cm-content": { padding: "10px" },
             ".cm-gutters": { fontSize: px + "px" }
