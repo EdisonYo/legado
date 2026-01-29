@@ -134,20 +134,54 @@ function MergeDirectBases([hashtable]$entry, [string]$sig, [string]$root) {
 function Get-Functions([string]$block) {
   $names = @()
   if ([string]::IsNullOrWhiteSpace($block)) { return $names }
-  $rx = [regex]::new("(?m)^[^\n]*\bfun\s+([A-Za-z_][\w]*)\s*\(([^)]*)\)")
-  foreach ($line in (Get-TopLevelLines $block)) {
-    foreach ($m in $rx.Matches($line)) {
-      $prefix = $m.Value
-      if (Is-VisibleMember $prefix) {
-        $name = $m.Groups[1].Value
-        $args = $m.Groups[2].Value
+  $len = $block.Length
+  $depth = 0
+  $i = 0
+  while ($i -lt $len - 3) {
+    $ch = $block[$i]
+    if ($ch -eq '{') { $depth++; $i++; continue }
+    if ($ch -eq '}') { if ($depth -gt 0) { $depth-- }; $i++; continue }
+    if ($depth -ne 0) { $i++; continue }
+
+    if ($block.Substring($i, 3) -eq "fun") {
+      $prev = if ($i -gt 0) { $block[$i - 1] } else { ' ' }
+      $next = $block[$i + 3]
+      if ($prev -match '[A-Za-z0-9_]' -or $next -notmatch '\s') { $i++; continue }
+
+      $j = $i + 3
+      while ($j -lt $len -and $block[$j] -match '\s') { $j++ }
+      if ($j -ge $len) { break }
+
+      $nameStart = $j
+      while ($j -lt $len -and $block[$j] -match '[A-Za-z0-9_]') { $j++ }
+      if ($j -le $nameStart) { $i++; continue }
+      $name = $block.Substring($nameStart, $j - $nameStart)
+
+      while ($j -lt $len -and $block[$j] -match '\s') { $j++ }
+      if ($j -ge $len -or $block[$j] -ne '(') { $i++; continue }
+
+      $paren = 1
+      $k = $j + 1
+      while ($k -lt $len -and $paren -gt 0) {
+        $c = $block[$k]
+        if ($c -eq '(') { $paren++ }
+        elseif ($c -eq ')') { $paren-- }
+        $k++
+      }
+      if ($paren -ne 0) { $i = $j + 1; continue }
+      $args = $block.Substring($j + 1, ($k - 1) - ($j + 1))
+
+      if (Is-VisibleMember ("fun " + $name)) {
         if ([string]::IsNullOrWhiteSpace($args)) {
           $names += ($name + "()")
         } else {
           $names += $name
         }
       }
+      $i = $k
+      continue
     }
+    $i++
   }
   return $names
 }
@@ -248,6 +282,8 @@ function NormalizeEntry($data) {
     }
   }
   $data.props = $data.props | Where-Object { $_ -ne $null -and -not $methodBases.ContainsKey($_) }
+  if ($null -eq $data.props) { $data.props = @() }
+  if ($null -eq $data.methods) { $data.methods = @() }
   return $data
 }
 
@@ -343,6 +379,7 @@ $custom = [ordered]@{
 }
 
 $json = $custom | ConvertTo-Json -Depth 6
+$json = [regex]::Replace($json, "\[\s*\r?\n\s*\r?\n\s*\]", "[]")
 $lines = $json -split "`n"
 $indented = @()
 for ($i = 0; $i -lt $lines.Length; $i++) {

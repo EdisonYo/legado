@@ -584,7 +584,9 @@
       // <AUTO_COMPLETIONS>
       const CUSTOM_COMPLETIONS = {
           "java":  {
-                       "props":  null,
+                       "props":  [
+      
+                                 ],
                        "methods":  [
                                        "ajax",
                                        "ajaxAll",
@@ -595,7 +597,12 @@
                                        "bytesToStr",
                                        "cacheFile",
                                        "connect",
+                                       "createAsymmetricCrypto",
+                                       "createSign",
+                                       "createSymmetricCrypto",
                                        "deleteFile",
+                                       "digestBase64Str",
+                                       "digestHex",
                                        "downloadFile",
                                        "encodeURI",
                                        "get",
@@ -615,6 +622,8 @@
                                        "hexDecodeToByteArray",
                                        "hexDecodeToString",
                                        "hexEncodeToString",
+                                       "HMacBase64",
+                                       "HMacHex",
                                        "htmlFormat",
                                        "importScript",
                                        "log",
@@ -629,6 +638,7 @@
                                        "randomUUID()",
                                        "readFile",
                                        "readTxtFile",
+                                       "replaceFont",
                                        "s2t",
                                        "startBrowser",
                                        "startBrowserAwait",
@@ -644,6 +654,7 @@
                                        "unrarFile",
                                        "unzipFile",
                                        "webView",
+                                       "webViewGetOverrideUrl",
                                        "webViewGetSource"
                                    ]
                    },
@@ -679,7 +690,9 @@
                                      ]
                      },
           "cookie":  {
-                         "props":  null,
+                         "props":  [
+      
+                                   ],
                          "methods":  [
                                          "clear()",
                                          "cookieToMap",
@@ -692,7 +705,9 @@
                                      ]
                      },
           "cache":  {
-                        "props":  null,
+                        "props":  [
+      
+                                  ],
                         "methods":  [
                                         "delete",
                                         "deleteMemory",
@@ -828,9 +843,11 @@
                                         "wordCount"
                                     ],
                           "methods":  [
+                                          "ensureTitleMD5Init()",
                                           "equals",
                                           "getAbsoluteURL()",
                                           "getBigVariable",
+                                          "getDisplayTitle",
                                           "getFileName",
                                           "getFontName()",
                                           "hashCode()",
@@ -843,8 +860,6 @@
                                       ]
                       }
       };
-      const COMPLETION_KEYS = Object.keys(CUSTOM_COMPLETIONS);
-      const COMPLETION_REGEX = new RegExp(`^(${COMPLETION_KEYS.join("|")})\\.([\\w]*)$`);
       // </AUTO_COMPLETIONS>
 
       function customCompletion(context) {
@@ -1235,6 +1250,10 @@
   </script>
 </body>
 </html>
+
+
+
+
 
 
 
