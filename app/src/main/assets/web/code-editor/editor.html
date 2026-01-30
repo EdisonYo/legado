@@ -1270,13 +1270,16 @@
         if (window.visualViewport) {
           const syncViewport = () => {
             const h = window.visualViewport.height;
+            const offsetTop = window.visualViewport.offsetTop;
             document.documentElement.style.height = h + "px";
             document.body.style.height = h + "px";
-            if (fontSize === "auto") applyFontSize("auto");
+
+            if (offsetTop > 0) {
+               window.scrollTo(0, 0);
+            }
           };
           const vvSync = debounce(syncViewport, 50);
           window.visualViewport.addEventListener("resize", vvSync);
-          window.visualViewport.addEventListener("scroll", vvSync);
           syncViewport();
         }
 
