@@ -404,6 +404,8 @@
   <script src="estree.js"></script>
   <script src="codemirror.bundle.js"
     onerror="window.__LEGADO_BOOT_ERROR && window.__LEGADO_BOOT_ERROR('codemirror.bundle.js 加载失败')"></script>
+  <script src="completions.js"
+    onerror="window.__LEGADO_BOOT_ERROR && window.__LEGADO_BOOT_ERROR('completions.js 加载失败')"></script>
   <script>
     // 早期兜底：如果主脚本未执行，显示提示
     window.setTimeout(function () {
@@ -656,37 +658,15 @@
           return true;
         }
 
-        let CUSTOM_COMPLETIONS = null;
-        let completionsPromise = null;
-        let completionRegex = null;
-
-        function loadCompletions() {
-          if (CUSTOM_COMPLETIONS) return Promise.resolve(CUSTOM_COMPLETIONS);
-          if (completionsPromise) return completionsPromise;
-          completionsPromise = fetch("completions.json")
-            .then((res) => res.ok ? res.json() : {})
-            .then((data) => {
-              CUSTOM_COMPLETIONS = data || {};
-              const keys = Object.keys(CUSTOM_COMPLETIONS);
-              completionRegex = keys.length
-                ? new RegExp(`^(${keys.join("|")})\\.([\\w]*)$`)
-                : null;
-              return CUSTOM_COMPLETIONS;
-            })
-            .catch((e) => {
-              appendLog("error", "补全数据加载失败: " + (e && e.message ? e.message : e));
-              CUSTOM_COMPLETIONS = {};
-              completionRegex = null;
-              return CUSTOM_COMPLETIONS;
-            });
-          return completionsPromise;
-        }
+        const CUSTOM_COMPLETIONS = (window.CUSTOM_COMPLETIONS && typeof window.CUSTOM_COMPLETIONS === "object")
+          ? window.CUSTOM_COMPLETIONS
+          : {};
+        const completionRegex = (() => {
+          const keys = Object.keys(CUSTOM_COMPLETIONS);
+          return keys.length ? new RegExp(`^(${keys.join("|")})\\.([\\w]*)$`) : null;
+        })();
 
         function customCompletion(context) {
-          if (!CUSTOM_COMPLETIONS) {
-            loadCompletions();
-            return null;
-          }
           if (!context.explicit) {
             const prev = context.pos > 0 ? context.state.sliceDoc(context.pos - 1, context.pos) : "";
             if (prev.trim() === "") return null;
@@ -791,12 +771,6 @@
           return;
         }
         window.__LEGADO_EDITOR_BOOTED = true;
-
-        if (typeof requestIdleCallback === "function") {
-          requestIdleCallback(() => loadCompletions(), { timeout: 1500 });
-        } else {
-          setTimeout(() => loadCompletions(), 800);
-        }
 
         const syncAutoTheme = () => {
           if (themeMode !== "auto") return;

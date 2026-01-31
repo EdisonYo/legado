@@ -403,20 +403,10 @@ $custom = [ordered]@{
 
 $json = $custom | ConvertTo-Json -Depth 6
 $json = [regex]::Replace($json, "\[\s*\r?\n\s*\r?\n\s*\]", "[]")
-$completionsPath = Join-Path $root "app/src/main/assets/web/code-editor/completions.json"
-Set-Content -LiteralPath $completionsPath -Value $json
+$completionsPath = Join-Path $root "app/src/main/assets/web/code-editor/completions.js"
+$content = "window.CUSTOM_COMPLETIONS = " + $json + ";"
+Set-Content -LiteralPath $completionsPath -Value $content
 
-$block = "// <AUTO_COMPLETIONS>`n        let CUSTOM_COMPLETIONS = null;`n        // </AUTO_COMPLETIONS>"
-
-$editorPath = Join-Path $root "app/src/main/assets/web/code-editor/editor.html"
-$editorText = Get-Content -Raw -LiteralPath $editorPath
-$pattern = "// <AUTO_COMPLETIONS>[\s\S]*?// </AUTO_COMPLETIONS>"
-if ($editorText -notmatch $pattern) {
-  throw "AUTO_COMPLETIONS marker not found in editor.html"
-}
-$updated = [regex]::Replace($editorText, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $block })
-Set-Content -LiteralPath $editorPath -Value $updated
-
-Write-Output "Updated completions in editor.html"
+Write-Output "Updated completions.js"
 
 
