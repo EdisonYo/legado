@@ -394,6 +394,14 @@ interface JsExtensions : JsEncodeUtils {
     }
 
     /**
+     * js实现重定向拦截,网络访问get (header为JSON字符串)
+     */
+    fun get(urlStr: String, header: String?): Connection.Response {
+        val headerMap = GSON.fromJsonObject<Map<String, String>>(header).getOrNull() ?: emptyMap()
+        return get(urlStr, headerMap)
+    }
+
+    /**
      * js实现重定向拦截,网络访问head,不返回Response Body更省流量
      */
     fun head(urlStr: String, headers: Map<String, String>): Connection.Response {
@@ -412,6 +420,14 @@ interface JsExtensions : JsEncodeUtils {
                 .execute()
         }
         return response
+    }
+
+    /**
+     * js实现重定向拦截,网络访问head (header为JSON字符串)
+     */
+    fun head(urlStr: String, header: String?): Connection.Response {
+        val headerMap = GSON.fromJsonObject<Map<String, String>>(header).getOrNull() ?: emptyMap()
+        return head(urlStr, headerMap)
     }
 
     /**
@@ -434,6 +450,14 @@ interface JsExtensions : JsEncodeUtils {
                 .execute()
         }
         return response
+    }
+
+    /**
+     * 网络访问post (header为JSON字符串)
+     */
+    fun post(urlStr: String, body: String, header: String?): Connection.Response {
+        val headerMap = GSON.fromJsonObject<Map<String, String>>(header).getOrNull() ?: emptyMap()
+        return post(urlStr, body, headerMap)
     }
 
     /* Str转ByteArray */
