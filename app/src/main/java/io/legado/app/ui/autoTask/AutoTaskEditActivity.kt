@@ -12,6 +12,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityAutoTaskEditBinding
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.AutoTask
 import io.legado.app.model.AutoTaskRule
@@ -62,6 +63,7 @@ class AutoTaskEditActivity :
     }
     private val fieldMap = linkedMapOf<String, EditEntity>()
     private var task: AutoTaskRule? = null
+    private var originTask: AutoTaskRule? = null
     private val softKeyboardTool by lazy {
         KeyboardToolPop(this, lifecycleScope, binding.root, this)
     }
@@ -121,6 +123,7 @@ class AutoTaskEditActivity :
     }
 
     private fun upView(rule: AutoTaskRule) {
+        originTask = rule.copy()
         binding.cbEnable.isChecked = rule.enable
         binding.cbCookie.isChecked = rule.enabledCookieJar
         fieldMap.clear()
@@ -217,6 +220,40 @@ class AutoTaskEditActivity :
         rule.enabledCookieJar = binding.cbCookie.isChecked
         task = rule
         return rule
+    }
+
+    private fun buildTaskDraft(): AutoTaskRule {
+        val base = originTask ?: task ?: AutoTaskRule()
+        return base.copy(
+            name = getFieldValue("name"),
+            cron = getFieldValue("cron").ifBlank { AutoTask.DEFAULT_CRON },
+            comment = getFieldValue("comment").ifBlank { null },
+            script = getFieldValue("script"),
+            header = getFieldValue("header").ifBlank { null },
+            jsLib = getFieldValue("jsLib").ifBlank { null },
+            concurrentRate = getFieldValue("concurrentRate").ifBlank { null },
+            loginUrl = getFieldValue("loginUrl").ifBlank { null },
+            loginUi = getFieldValue("loginUi").ifBlank { null },
+            loginCheckJs = getFieldValue("loginCheckJs").ifBlank { null },
+            enable = binding.cbEnable.isChecked,
+            enabledCookieJar = binding.cbCookie.isChecked
+        )
+    }
+
+    override fun finish() {
+        val base = originTask ?: task ?: AutoTaskRule()
+        val current = buildTaskDraft()
+        if (current != base) {
+            alert(R.string.exit) {
+                setMessage(R.string.exit_no_save)
+                positiveButton(R.string.yes)
+                negativeButton(R.string.no) {
+                    super.finish()
+                }
+            }
+        } else {
+            super.finish()
+        }
     }
 
     private fun openLogin() {
