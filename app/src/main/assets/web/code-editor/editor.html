@@ -782,6 +782,12 @@
           const { state } = view;
           const { from, to, head } = state.selection.main;
           const line = state.doc.lineAt(head);
+          if (
+            line.length < LONG_LINE_SCROLL_LIMIT &&
+            typeof insertNewlineAndIndent === "function"
+          ) {
+            return insertNewlineAndIndent(view);
+          }
           let baseIndent = (line.text.match(/^\s*/) || [""])[0];
           const insert = "\n" + baseIndent;
           const cursor = from + insert.length;
