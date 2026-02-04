@@ -3,9 +3,11 @@ package io.legado.app.help.rhino
 import com.script.rhino.JavaObjectWrapFactory
 import org.mozilla.javascript.NativeJavaObject
 import org.mozilla.javascript.Scriptable
+import org.mozilla.javascript.lc.type.TypeInfo
+import org.mozilla.javascript.lc.type.TypeInfoFactory
 
 class NativeBaseSource(scope: Scriptable?, javaObject: Any, staticType: Class<*>?) :
-    NativeJavaObject(scope, javaObject, staticType) {
+    NativeJavaObject(scope, javaObject, staticType.toTypeInfo()) {
 
     override fun has(name: String, start: Scriptable): Boolean {
         if (name != "setVariable" && name.length > 3 && name.startsWith("set")) {
@@ -43,4 +45,8 @@ class NativeBaseSource(scope: Scriptable?, javaObject: Any, staticType: Class<*>
         }
     }
 
+}
+
+private fun Class<*>?.toTypeInfo(): TypeInfo {
+    return this?.let { TypeInfoFactory.GLOBAL.create(it) } ?: TypeInfo.NONE
 }

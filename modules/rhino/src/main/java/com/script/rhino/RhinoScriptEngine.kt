@@ -34,7 +34,6 @@ import com.script.ScriptContext
 import com.script.ScriptException
 import com.script.SimpleBindings
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import org.mozilla.javascript.Callable
 import org.mozilla.javascript.ConsString
@@ -127,8 +126,9 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
     @Throws(ContinuationPending::class)
     override suspend fun evalSuspend(reader: Reader, scope: Scriptable): Any? {
         val cx = Context.enter() as RhinoContext
+        Context.exit()
         var ret: Any?
-        withContext(VMBridgeReflect.contextLocal.asContextElement()) {
+        withContext(RhinoContextElement(cx)) {
             cx.allowScriptRun = true
             cx.recursiveCount++
             try {
@@ -168,7 +168,6 @@ object RhinoScriptEngine : AbstractScriptEngine(), Invocable, Compilable {
             } finally {
                 cx.allowScriptRun = false
                 cx.recursiveCount--
-                Context.exit()
             }
         }
         return unwrapReturnValue(ret)

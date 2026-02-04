@@ -20,7 +20,15 @@ static def releaseTime() {
 
 def name = "legado"
 def version = "3." + releaseTime()
-def gitCommits = Integer.parseInt('git rev-list HEAD --count'.execute().text.trim())
+def gitCommits = 0
+try {
+    def out = 'git rev-list HEAD --count'.execute().text.trim()
+    if (out) {
+        gitCommits = Integer.parseInt(out)
+    }
+} catch (ignored) {
+    // Fallback to 0 when git is unavailable in the Gradle environment
+}
 
 android {
     compileSdk = compile_sdk_version
@@ -47,7 +55,7 @@ android {
     }
     defaultConfig {
         applicationId "io.legado.app.releaseT"
-        minSdk 21
+        minSdk 26
         targetSdk 36
         versionCode 10000 + gitCommits
         versionName version

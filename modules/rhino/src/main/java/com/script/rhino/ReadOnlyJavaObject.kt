@@ -2,9 +2,11 @@ package com.script.rhino
 
 import org.mozilla.javascript.NativeJavaObject
 import org.mozilla.javascript.Scriptable
+import org.mozilla.javascript.lc.type.TypeInfo
+import org.mozilla.javascript.lc.type.TypeInfoFactory
 
 class ReadOnlyJavaObject(scope: Scriptable?, javaObject: Any, staticType: Class<*>?) :
-    NativeJavaObject(scope, javaObject, staticType) {
+    NativeJavaObject(scope, javaObject, staticType.toTypeInfo()) {
 
     override fun has(name: String, start: Scriptable): Boolean {
         if (name.length > 3 && name.startsWith("set")) {
@@ -40,4 +42,8 @@ class ReadOnlyJavaObject(scope: Scriptable?, javaObject: Any, staticType: Class<
         }
     }
 
+}
+
+private fun Class<*>?.toTypeInfo(): TypeInfo {
+    return this?.let { TypeInfoFactory.GLOBAL.create(it) } ?: TypeInfo.NONE
 }

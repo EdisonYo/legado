@@ -28,7 +28,6 @@ import com.script.CompiledScript
 import com.script.ScriptEngine
 import com.script.ScriptException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContinuationPending
@@ -88,8 +87,9 @@ internal class RhinoCompiledScript(
 
     override suspend fun evalSuspend(scope: Scriptable): Any? {
         val cx = Context.enter() as RhinoContext
+        Context.exit()
         var ret: Any?
-        withContext(VMBridgeReflect.contextLocal.asContextElement()) {
+        withContext(RhinoContextElement(cx)) {
             cx.allowScriptRun = true
             cx.recursiveCount++
             try {
@@ -126,7 +126,6 @@ internal class RhinoCompiledScript(
             } finally {
                 cx.allowScriptRun = false
                 cx.recursiveCount--
-                Context.exit()
             }
         }
         return engine.unwrapReturnValue(ret)

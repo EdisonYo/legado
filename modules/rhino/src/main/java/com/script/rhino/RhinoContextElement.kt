@@ -1,0 +1,31 @@
+package com.script.rhino
+
+import kotlinx.coroutines.ThreadContextElement
+import org.mozilla.javascript.Context
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
+
+internal class RhinoContextElement(private val cx: Context) :
+    ThreadContextElement<Boolean>,
+    AbstractCoroutineContextElement(Key) {
+
+    override fun updateThreadContext(context: CoroutineContext): Boolean {
+        val current = Context.getCurrentContext()
+        return when {
+            current == null -> {
+                Context.enter(cx)
+                true
+            }
+            current === cx -> false
+            else -> error("线程已绑定其他 Rhino Context，无法切换")
+        }
+    }
+
+    override fun restoreThreadContext(context: CoroutineContext, entered: Boolean) {
+        if (entered) {
+            Context.exit()
+        }
+    }
+
+    companion object Key : CoroutineContext.Key<RhinoContextElement>
+}
