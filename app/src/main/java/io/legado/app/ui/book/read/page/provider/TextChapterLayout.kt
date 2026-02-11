@@ -311,7 +311,8 @@ class TextChapterLayout(
             pendingTextPage.lines.last().isParagraphEnd = true
             ChapterProvider.appendReviewColumnIfNeeded(
                 pendingTextPage.lines.last(),
-                reviewTitleOffset
+                reviewTitleOffset,
+                chapterIndex = bookChapter.index
             )
             stringBuilder.append("\n")
         }
@@ -749,7 +750,8 @@ class TextChapterLayout(
         val count = ChapterProvider.getReviewCount(
             paragraphNum,
             textLine.isTitle,
-            reviewTitleOffset
+            reviewTitleOffset,
+            chapterIndex = bookChapter.index
         )
         if (count <= 0) return
         textLine.columns.forEach { column ->

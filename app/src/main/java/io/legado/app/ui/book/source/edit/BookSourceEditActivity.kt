@@ -389,11 +389,6 @@ class BookSourceEditActivity :
             add(EditEntity("detailNameRule", rr.detailNameRule, R.string.rule_review_detail_name))
             add(EditEntity("detailBadgeRule", rr.detailBadgeRule, R.string.rule_review_detail_badge))
             add(EditEntity("detailContentRule", rr.detailContentRule, R.string.rule_review_detail_content))
-            add(EditEntity("detailImageRule", rr.detailImageRule, R.string.rule_review_detail_image))
-            add(EditEntity("detailAudioRule", rr.detailAudioRule, R.string.rule_review_detail_audio))
-            add(EditEntity("detailTimeRule", rr.detailTimeRule, R.string.rule_review_detail_time))
-            add(EditEntity("detailLikeCountRule", rr.detailLikeCountRule, R.string.rule_review_detail_like_count))
-            add(EditEntity("detailReplyCountRule", rr.detailReplyCountRule, R.string.rule_review_detail_reply_count))
 
             add(EditEntity("replyListRule", rr.replyListRule, R.string.rule_review_reply_list))
             add(EditEntity("replyIdRule", rr.replyIdRule, R.string.rule_review_reply_id))
@@ -401,9 +396,6 @@ class BookSourceEditActivity :
             add(EditEntity("replyNameRule", rr.replyNameRule, R.string.rule_review_reply_name))
             add(EditEntity("replyBadgeRule", rr.replyBadgeRule, R.string.rule_review_reply_badge))
             add(EditEntity("replyContentRule", rr.replyContentRule, R.string.rule_review_reply_content))
-            add(EditEntity("replyImageRule", rr.replyImageRule, R.string.rule_review_reply_image))
-            add(EditEntity("replyAudioRule", rr.replyAudioRule, R.string.rule_review_reply_audio))
-            add(EditEntity("replyTimeRule", rr.replyTimeRule, R.string.rule_review_reply_time))
         }
         binding.tabLayout.selectTab(binding.tabLayout.getTabAt(0))
         setEditEntities(0)
@@ -425,7 +417,7 @@ class BookSourceEditActivity :
         val bookInfoRule = BookInfoRule()
         val tocRule = TocRule()
         val contentRule = ContentRule()
-        val reviewRule = ReviewRule()
+        val reviewRule = source.ruleReview?.copy() ?: ReviewRule()
         reviewRule.enabled = binding.cbIsEnableReview.isChecked
         sourceEntities.forEach {
             it.value = it.value?.takeIf { s -> s.isNotBlank() }
@@ -597,20 +589,12 @@ class BookSourceEditActivity :
                 "detailNameRule" -> reviewRule.detailNameRule = it.value
                 "detailBadgeRule" -> reviewRule.detailBadgeRule = it.value
                 "detailContentRule" -> reviewRule.detailContentRule = it.value
-                "detailImageRule" -> reviewRule.detailImageRule = it.value
-                "detailAudioRule" -> reviewRule.detailAudioRule = it.value
-                "detailTimeRule" -> reviewRule.detailTimeRule = it.value
-                "detailLikeCountRule" -> reviewRule.detailLikeCountRule = it.value
-                "detailReplyCountRule" -> reviewRule.detailReplyCountRule = it.value
                 "replyListRule" -> reviewRule.replyListRule = it.value
                 "replyIdRule" -> reviewRule.replyIdRule = it.value
                 "replyAvatarRule" -> reviewRule.replyAvatarRule = it.value
                 "replyNameRule" -> reviewRule.replyNameRule = it.value
                 "replyBadgeRule" -> reviewRule.replyBadgeRule = it.value
                 "replyContentRule" -> reviewRule.replyContentRule = it.value
-                "replyImageRule" -> reviewRule.replyImageRule = it.value
-                "replyAudioRule" -> reviewRule.replyAudioRule = it.value
-                "replyTimeRule" -> reviewRule.replyTimeRule = it.value
             }
         }
         source.ruleSearch = searchRule

@@ -156,9 +156,9 @@ object ChapterProvider {
     private var upViewSizeRunnable: Runnable? = null
 
     @Volatile
-    private var reviewCountProvider: ((Int) -> Int)? = null
+    private var reviewCountProvider: ((Int, Int) -> Int)? = null
     @Volatile
-    private var reviewKeyProvider: ((Int) -> String?)? = null
+    private var reviewKeyProvider: ((Int, Int) -> String?)? = null
 
     private const val reviewTitleOffset = 1
 
@@ -899,8 +899,8 @@ object ChapterProvider {
     }
 
     fun setReviewProviders(
-        countProvider: ((Int) -> Int)?,
-        keyProvider: ((Int) -> String?)?
+        countProvider: ((Int, Int) -> Int)?,
+        keyProvider: ((Int, Int) -> String?)?
     ) {
         reviewCountProvider = countProvider
         reviewKeyProvider = keyProvider
@@ -912,15 +912,21 @@ object ChapterProvider {
     }
 
     fun setReviewCountProvider(provider: ((Int) -> Int)?) {
-        setReviewProviders(provider, reviewKeyProvider)
+        val wrappedProvider = provider?.let { p ->
+            { _: Int, reviewId: Int -> p(reviewId) }
+        }
+        setReviewProviders(wrappedProvider, reviewKeyProvider)
     }
 
     fun setReviewKeyProvider(provider: ((Int) -> String?)?) {
-        setReviewProviders(reviewCountProvider, provider)
+        val wrappedProvider = provider?.let { p ->
+            { _: Int, reviewId: Int -> p(reviewId) }
+        }
+        setReviewProviders(reviewCountProvider, wrappedProvider)
     }
 
-    fun getReviewKeyById(reviewId: Int): String? {
-        return reviewKeyProvider?.invoke(reviewId)?.takeIf { it.isNotBlank() }
+    fun getReviewKeyById(reviewId: Int, chapterIndex: Int = ReadBook.durChapterIndex): String? {
+        return reviewKeyProvider?.invoke(chapterIndex, reviewId)?.takeIf { it.isNotBlank() }
     }
 
     /**
@@ -934,6 +940,7 @@ object ChapterProvider {
 
     private fun refreshReviewColumns(textChapter: TextChapter?) {
         textChapter ?: return
+        val chapterIndex = textChapter.chapter.index
         var pageIndex = 0
         while (pageIndex < textChapter.pageSize) {
             val page = textChapter.getPage(pageIndex) ?: break
@@ -942,7 +949,11 @@ object ChapterProvider {
             var lineIndex = 0
             while (lineIndex < lineSize) {
                 val line = lines.getOrNull(lineIndex) ?: break
-                val count = getReviewCount(line.paragraphNum, line.isTitle)
+                val count = getReviewCount(
+                    paragraphNum = line.paragraphNum,
+                    isTitle = line.isTitle,
+                    chapterIndex = chapterIndex
+                )
                 var changed = false
                 val shouldShow = count > 0 && line.isParagraphEnd
                 if (!shouldShow) {
@@ -961,7 +972,7 @@ object ChapterProvider {
                         }
                     }
                     if (!hasReviewColumn) {
-                        appendReviewColumnIfNeeded(line)
+                        appendReviewColumnIfNeeded(line, chapterIndex = chapterIndex)
                         changed = true
                     }
                 }
@@ -978,23 +989,25 @@ object ChapterProvider {
         paragraphNum: Int,
         isTitle: Boolean = false,
         titleOffset: Int = reviewTitleOffset,
+        chapterIndex: Int = ReadBook.durChapterIndex,
     ): Int {
         val provider = reviewCountProvider ?: return 0
         if (isTitle) {
-            val titleCount = provider(-1)
+            val titleCount = provider(chapterIndex, -1)
             if (titleCount > 0) return titleCount
         }
         val reviewId = paragraphNum - titleOffset
         if (reviewId <= 0) return 0
-        return provider(reviewId)
+        return provider(chapterIndex, reviewId)
     }
 
     private fun updateReviewCount(
         textLine: TextLine,
         paragraphNum: Int,
         titleOffset: Int = reviewTitleOffset,
+        chapterIndex: Int = ReadBook.durChapterIndex,
     ) {
-        val count = getReviewCount(paragraphNum, textLine.isTitle, titleOffset)
+        val count = getReviewCount(paragraphNum, textLine.isTitle, titleOffset, chapterIndex)
         if (count <= 0) return
         textLine.columns.forEach { column ->
             if (column is ReviewColumn) {
@@ -1006,9 +1019,10 @@ object ChapterProvider {
     fun appendReviewColumnIfNeeded(
         textLine: TextLine,
         titleOffset: Int = reviewTitleOffset,
+        chapterIndex: Int = ReadBook.durChapterIndex,
     ) {
         if (textLine.columns.any { it is ReviewColumn }) return
-        val count = getReviewCount(textLine.paragraphNum, textLine.isTitle, titleOffset)
+        val count = getReviewCount(textLine.paragraphNum, textLine.isTitle, titleOffset, chapterIndex)
         if (count <= 0) return
         val width = getReviewWidth(textLine.isTitle)
         val maxEnd = if (doublePage && textLine.isLeftLine) {

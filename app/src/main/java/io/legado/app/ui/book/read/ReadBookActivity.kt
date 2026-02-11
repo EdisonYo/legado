@@ -260,6 +260,12 @@ class ReadBookActivity : BaseReadBookActivity(),
     private var reviewSummaryAppliedKey: String? = null
     private var reviewSummaryLoadingKey: String? = null
     private var reviewSummaryRequestToken: Long = 0
+    private val reviewSummaryCache = object : LinkedHashMap<String, ReviewSummaryResult>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ReviewSummaryResult>): Boolean {
+            return size > 5
+        }
+    }
+    private val reviewSummaryPrefetchingKeys = HashSet<String>()
 
     //恢复跳转前进度对话框的交互结果
     private var confirmRestoreProcess: Boolean? = null
@@ -641,6 +647,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         reviewSummaryRequestToken++
         reviewSummaryAppliedKey = null
         reviewSummaryLoadingKey = null
+        synchronized(reviewSummaryCache) {
+            reviewSummaryCache.clear()
+        }
+        synchronized(reviewSummaryPrefetchingKeys) {
+            reviewSummaryPrefetchingKeys.clear()
+        }
         ChapterProvider.clearReviewProviders()
     }
 
@@ -1508,6 +1520,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         val chapterIndex = ReadBook.durChapterIndex
         val key = "${book.bookUrl}#$chapterIndex"
         if (reviewSummaryAppliedKey == key || reviewSummaryLoadingKey == key) return
+        val cached = synchronized(reviewSummaryCache) { reviewSummaryCache[key] }
+        if (cached != null) {
+                applyReviewSummary(key, chapterIndex, cached)
+                prefetchAdjacentReviewSummary(book, source, reviewRule, chapterIndex)
+                return
+            }
         reviewSummaryLoadingKey = key
         val requestToken = ++reviewSummaryRequestToken
         if (reviewSummaryAppliedKey != key) {
@@ -1540,14 +1558,15 @@ class ReadBookActivity : BaseReadBookActivity(),
             val curKey = "${curBook.bookUrl}#${ReadBook.durChapterIndex}"
             if (curKey != key) return@onSuccess
             reviewSummaryLoadingKey = null
-            val counts = result?.counts ?: emptyMap()
-            val keys = result?.keys ?: emptyMap()
-            ChapterProvider.setReviewProviders(
-                countProvider = { counts[it] ?: 0 },
-                keyProvider = { keys[it] }
-            )
-            reviewSummaryAppliedKey = key
-            ReadBook.loadContent(resetPageOffset = false)
+            if (result != null) {
+                synchronized(reviewSummaryCache) {
+                    reviewSummaryCache[key] = result
+                }
+                applyReviewSummary(key, chapterIndex, result)
+                prefetchAdjacentReviewSummary(book, source, reviewRule, chapterIndex)
+            } else {
+                ChapterProvider.clearReviewProviders()
+            }
         }.onError {
             if (requestToken != reviewSummaryRequestToken) return@onError
             val curBook = ReadBook.book
@@ -1556,6 +1575,87 @@ class ReadBookActivity : BaseReadBookActivity(),
             reviewSummaryLoadingKey = null
             ChapterProvider.clearReviewProviders()
             AppLog.put("加载段评统计出错\n${it.localizedMessage}", it)
+        }
+    }
+
+    private fun applyReviewSummary(key: String, chapterIndex: Int, result: ReviewSummaryResult) {
+        val counts = result.counts
+        val keys = result.keys
+        ChapterProvider.setReviewProviders(
+            countProvider = { targetChapterIndex, reviewId ->
+                if (targetChapterIndex != chapterIndex) 0 else counts[reviewId] ?: 0
+            },
+            keyProvider = { targetChapterIndex, reviewId ->
+                if (targetChapterIndex != chapterIndex) null else keys[reviewId]
+            }
+        )
+        reviewSummaryAppliedKey = key
+        ReadBook.loadContent(resetPageOffset = false)
+    }
+
+    private fun prefetchAdjacentReviewSummary(
+        book: Book,
+        source: BaseSource,
+        rule: ReviewRule,
+        chapterIndex: Int
+    ) {
+        val maxIndex = if (ReadBook.simulatedChapterSize > 0) {
+            ReadBook.simulatedChapterSize
+        } else {
+            ReadBook.chapterSize
+        }
+        if (maxIndex <= 0) return
+        val indices = intArrayOf(chapterIndex - 1, chapterIndex + 1)
+        val token = reviewSummaryRequestToken
+        for (idx in indices) {
+            if (idx < 0 || idx >= maxIndex) continue
+            val key = "${book.bookUrl}#$idx"
+            if (reviewSummaryLoadingKey == key) continue
+            val hasCache = synchronized(reviewSummaryCache) { reviewSummaryCache.containsKey(key) }
+            if (hasCache) continue
+            val shouldFetch = synchronized(reviewSummaryPrefetchingKeys) {
+                if (reviewSummaryPrefetchingKeys.contains(key)) false else {
+                    reviewSummaryPrefetchingKeys.add(key)
+                    true
+                }
+            }
+            if (!shouldFetch) continue
+            Coroutine.async(lifecycleScope, IO) {
+                val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, idx) ?: return@async null
+                val summaryUrl = rule.reviewSummaryUrl?.takeIf { it.isNotBlank() } ?: return@async null
+                val analyzeUrl = AnalyzeUrl(
+                    summaryUrl,
+                    baseUrl = chapter.url,
+                    source = source,
+                    ruleData = book,
+                    chapter = chapter,
+                    coroutineContext = coroutineContext
+                )
+                val body = analyzeUrl.getStrResponseAwait(useWebView = false).body
+                parseReviewSummary(
+                    body,
+                    rule,
+                    source,
+                    book,
+                    chapter,
+                    analyzeUrl.url,
+                    coroutineContext
+                )
+            }.onSuccess(Main) { result ->
+                synchronized(reviewSummaryPrefetchingKeys) {
+                    reviewSummaryPrefetchingKeys.remove(key)
+                }
+                if (token != reviewSummaryRequestToken) return@onSuccess
+                if (result != null) {
+                    synchronized(reviewSummaryCache) {
+                        reviewSummaryCache[key] = result
+                    }
+                }
+            }.onError {
+                synchronized(reviewSummaryPrefetchingKeys) {
+                    reviewSummaryPrefetchingKeys.remove(key)
+                }
+            }
         }
     }
 

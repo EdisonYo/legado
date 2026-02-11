@@ -454,6 +454,8 @@ object ReadBook : CoroutineScope by MainScope() {
         success: (() -> Unit)? = null
     ) {
         if (index < chapterSize) {
+            // Clear review icons immediately when switching chapters.
+            ChapterProvider.clearReviewProviders()
             clearTextChapter()
             if (upContent) callBack?.upContent()
             durChapterIndex = index

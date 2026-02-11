@@ -26,11 +26,6 @@ data class ReviewRule(
     var detailNameRule: String? = null,
     var detailBadgeRule: String? = null,
     var detailContentRule: String? = null,
-    var detailImageRule: String? = null,
-    var detailAudioRule: String? = null,
-    var detailTimeRule: String? = null,
-    var detailLikeCountRule: String? = null,
-    var detailReplyCountRule: String? = null,
 
     // 子评论
     var replyListRule: String? = null,
@@ -39,9 +34,6 @@ data class ReviewRule(
     var replyNameRule: String? = null,
     var replyBadgeRule: String? = null,
     var replyContentRule: String? = null,
-    var replyImageRule: String? = null,
-    var replyAudioRule: String? = null,
-    var replyTimeRule: String? = null,
 ) : Parcelable {
 
     companion object {

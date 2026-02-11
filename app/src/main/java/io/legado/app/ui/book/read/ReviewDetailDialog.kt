@@ -45,6 +45,7 @@ import io.legado.app.ui.widget.dialog.PhotoDialog
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.max
 import io.legado.app.utils.openUrl
 
@@ -111,7 +112,13 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         paragraphNum = arguments?.getInt("paragraphNum") ?: 0
         totalCount = arguments?.getInt("totalCount") ?: 0
         binding.root.setBackgroundResource(R.drawable.bg_dialog_round_top)
-        binding.toolBar.setBackgroundColor(getCompatColor(R.color.transparent))
+        binding.toolBar.setBackgroundResource(R.drawable.bg_review_toolbar)
+        binding.toolBar.updateLayoutParams<ViewGroup.LayoutParams> {
+            height = 42.dpToPx()
+        }
+        binding.toolBar.minimumHeight = 0
+        binding.toolBar.setPadding(0, 0, 0, 0)
+        binding.toolBar.setContentInsetsRelative(6.dpToPx(), 6.dpToPx())
         binding.toolBar.title = ""
         binding.toolBar.subtitle = null
         val oldCountView = binding.toolBar.findViewWithTag<View>("review_count_tag")
@@ -124,6 +131,9 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
                 text = getString(R.string.review_total_count, totalCount)
                 setTextColor(getCompatColor(R.color.secondaryText))
                 textSize = 14f
+                includeFontPadding = false
+                gravity = Gravity.CENTER_VERTICAL
+                maxLines = 1
             }
             val lp = androidx.appcompat.widget.Toolbar.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -450,6 +460,15 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         val nextPageUrl: String?
     )
 
+    private data class ReviewContentProtocol(
+        val text: String?,
+        val imageUrl: String?,
+        val audioUrl: String?,
+        val time: String?,
+        val likeCount: Int?,
+        val replyCount: Int?
+    )
+
     private fun parseReviewDetailList(
         body: String,
         rule: ReviewRule,
@@ -508,22 +527,21 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         val nameRule = if (isReply) rule.replyNameRule else rule.detailNameRule
         val badgeRule = if (isReply) rule.replyBadgeRule else rule.detailBadgeRule
         val contentRule = if (isReply) rule.replyContentRule else rule.detailContentRule
-        val imageRule = if (isReply) rule.replyImageRule else rule.detailImageRule
-        val audioRule = if (isReply) rule.replyAudioRule else rule.detailAudioRule
-        val timeRule = if (isReply) rule.replyTimeRule else rule.detailTimeRule
         val idRule = if (isReply) rule.replyIdRule else rule.detailIdRule
 
         val avatar = safeRuleString(analyzeRule, avatarRule)
             ?.let { NetworkUtils.getAbsoluteURL(baseUrl, it) }
         val name = safeRuleString(analyzeRule, nameRule)
-        val content = safeRuleString(analyzeRule, contentRule)
-        val imageUrl = safeRuleMediaUrl(analyzeRule, imageRule, baseUrl)
-        val audioUrl = safeRuleMediaUrl(analyzeRule, audioRule, baseUrl)
-        val time = safeRuleString(analyzeRule, timeRule)
+        val rawContent = safeRuleString(analyzeRule, contentRule)
+        val contentProtocol = parseReviewContentProtocol(rawContent, baseUrl)
+        val content = contentProtocol?.text ?: rawContent
+        val imageUrl = contentProtocol?.imageUrl
+        val audioUrl = contentProtocol?.audioUrl
+        val time = contentProtocol?.time
         val id = safeRuleString(analyzeRule, idRule)
         val badges = safeRuleList(analyzeRule, badgeRule)
-        val likeCount = if (isReply) null else safeRuleInt(analyzeRule, rule.detailLikeCountRule)
-        val replyCount = if (isReply) null else safeRuleInt(analyzeRule, rule.detailReplyCountRule)
+        val likeCount = if (isReply) null else contentProtocol?.likeCount
+        val replyCount = if (isReply) null else contentProtocol?.replyCount
 
         val replies = if (!isReply && !rule.replyListRule.isNullOrBlank()) {
             val replyList = runCatching {
@@ -560,6 +578,40 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         )
     }
 
+    private fun parseReviewContentProtocol(raw: String?, baseUrl: String): ReviewContentProtocol? {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty() || !text.startsWith("{") || !text.endsWith("}")) return null
+        val obj = runCatching { JSONObject(text) }.getOrNull() ?: return null
+        val t = obj.optString("text").trim().ifEmpty { null }
+        val imgRaw = obj.optString("img").trim().ifEmpty { null }
+        val audioRaw = obj.optString("audio").trim().ifEmpty { null }
+        val timeRaw = obj.optString("time").trim().ifEmpty { null }
+        val likeCountRaw = obj.opt("likeCount")
+        val replyCountRaw = obj.opt("replyCount")
+        val likeCount = parseProtocolInt(likeCountRaw)
+        val replyCount = parseProtocolInt(replyCountRaw)
+        if (t == null && imgRaw == null && audioRaw == null &&
+            timeRaw == null && likeCount == null && replyCount == null
+        ) return null
+        return ReviewContentProtocol(
+            text = t,
+            imageUrl = imgRaw?.let { NetworkUtils.getAbsoluteURL(baseUrl, it) },
+            audioUrl = audioRaw?.let { NetworkUtils.getAbsoluteURL(baseUrl, it) },
+            time = timeRaw,
+            likeCount = likeCount,
+            replyCount = replyCount
+        )
+    }
+
+    private fun parseProtocolInt(value: Any?): Int? {
+        return when (value) {
+            null, JSONObject.NULL -> null
+            is Number -> value.toInt()
+            is String -> value.trim().toIntOrNull() ?: value.trim().toDoubleOrNull()?.toInt()
+            else -> value.toString().trim().toIntOrNull() ?: value.toString().trim().toDoubleOrNull()?.toInt()
+        }
+    }
+
     private fun safeRuleString(analyzeRule: AnalyzeRule, rule: String?): String? {
         val r = rule?.trim().orEmpty()
         if (r.isEmpty()) return null
@@ -579,25 +631,6 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         }
         val fromString = runCatching { analyzeRule.getString(r) }.getOrDefault("")
         return splitBadgeValue(fromString).distinct()
-    }
-
-    private fun safeRuleMediaUrl(
-        analyzeRule: AnalyzeRule,
-        rule: String?,
-        baseUrl: String
-    ): String? {
-        val r = rule?.trim().orEmpty()
-        if (r.isEmpty()) return null
-        val fromList = runCatching {
-            analyzeRule.getStringList(r).orEmpty()
-        }.getOrDefault(emptyList())
-            .firstOrNull { it.isNotBlank() }
-            ?.trim()
-        val raw = fromList ?: runCatching {
-            analyzeRule.getString(r).trim()
-        }.getOrDefault("")
-        if (raw.isBlank()) return null
-        return NetworkUtils.getAbsoluteURL(baseUrl, raw)
     }
 
     private fun splitBadgeValue(value: String?): List<String> {
@@ -634,14 +667,6 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         if (raw.startsWith("data:")) return false
         if (!raw.contains("://")) return true
         return raw.contains(",http://") || raw.contains(",https://")
-    }
-
-    private fun safeRuleInt(analyzeRule: AnalyzeRule, rule: String?): Int? {
-        val r = rule?.trim().orEmpty()
-        if (r.isEmpty()) return null
-        val value = runCatching { analyzeRule.getString(r) }.getOrDefault("").trim()
-        if (value.isEmpty()) return null
-        return value.toIntOrNull() ?: value.toDoubleOrNull()?.toInt()
     }
 
     private inner class ReviewAdapter(context: Context) :
