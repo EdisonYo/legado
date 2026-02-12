@@ -534,7 +534,11 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
         val name = safeRuleString(analyzeRule, nameRule)
         val rawContent = safeRuleString(analyzeRule, contentRule)
         val contentProtocol = parseReviewContentProtocol(rawContent, baseUrl)
-        val content = contentProtocol?.text ?: rawContent
+        val content = if (contentProtocol != null) {
+            contentProtocol.text ?: ""
+        } else {
+            rawContent
+        }
         val imageUrl = contentProtocol?.imageUrl
         val audioUrl = contentProtocol?.audioUrl
         val time = contentProtocol?.time
