@@ -575,6 +575,7 @@ class BookSourceEditActivity :
             }
         }
         reviewEntities.forEach {
+            it.value = it.value?.takeIf { s -> s.isNotBlank() }
             when (it.key) {
                 "reviewSummaryUrl" -> reviewRule.reviewSummaryUrl = it.value
                 "summaryListRule" -> reviewRule.summaryListRule = it.value

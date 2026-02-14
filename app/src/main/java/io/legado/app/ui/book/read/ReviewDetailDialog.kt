@@ -13,6 +13,10 @@ import android.widget.TextView
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePaddingRelative
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.flexbox.FlexboxLayout
@@ -24,6 +28,7 @@ import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeRule
@@ -37,6 +42,7 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.visible
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.databinding.DialogRecyclerViewBinding
@@ -48,7 +54,6 @@ import kotlinx.coroutines.Dispatchers.Main
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.max
-import io.legado.app.utils.openUrl
 
 class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
@@ -70,6 +75,36 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
     private val mainItemIndexByKey = LinkedHashMap<String, Int>()
     private val detailItems = ArrayList<ReviewDetailItem>()
     private val expandedReplyParentKeys = HashSet<String>()
+    private var reviewAudioPlayer: ExoPlayer? = null
+    private var currentAudioUrl: String? = null
+    private var isAudioPreparing = false
+    private val audioPlayerListener = object : Player.Listener {
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            val previousAudioUrl = currentAudioUrl
+            when (playbackState) {
+                Player.STATE_BUFFERING -> isAudioPreparing = true
+                Player.STATE_READY -> isAudioPreparing = false
+                Player.STATE_ENDED -> {
+                    isAudioPreparing = false
+                    currentAudioUrl = null
+                }
+            }
+            refreshAudioPlaybackUi(previousAudioUrl, currentAudioUrl)
+        }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            refreshAudioPlaybackUi(currentAudioUrl, currentAudioUrl)
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            val previousAudioUrl = currentAudioUrl
+            isAudioPreparing = false
+            currentAudioUrl = null
+            AppLog.put("段评语音播放失败\n${error.localizedMessage}", error)
+            context?.toastOnUi(error.localizedMessage ?: getString(R.string.load_over_time))
+            refreshAudioPlaybackUi(previousAudioUrl, currentAudioUrl)
+        }
+    }
     private val uiItemDiffCallback = object : DiffUtil.ItemCallback<ReviewUiItem>() {
         override fun areItemsTheSame(oldItem: ReviewUiItem, newItem: ReviewUiItem): Boolean {
             if (oldItem.itemType != newItem.itemType) return false
@@ -169,6 +204,81 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
             }
         })
         loadDetailPage(paragraphNum, 1, append = false)
+    }
+
+    override fun onDestroyView() {
+        releaseAudioPlayer()
+        super.onDestroyView()
+    }
+
+    private fun ensureAudioPlayer(): ExoPlayer {
+        reviewAudioPlayer?.let { return it }
+        return ExoPlayerHelper.createHttpExoPlayer(requireContext()).also { player ->
+            player.addListener(audioPlayerListener)
+            reviewAudioPlayer = player
+        }
+    }
+
+    private fun toggleAudioPlayback(audioUrl: String) {
+        val previousAudioUrl = currentAudioUrl
+        val player = ensureAudioPlayer()
+        if (currentAudioUrl == audioUrl) {
+            if (isAudioPreparing) return
+            if (player.isPlaying) {
+                player.pause()
+            } else {
+                player.play()
+            }
+            refreshAudioPlaybackUi(previousAudioUrl, currentAudioUrl)
+            return
+        }
+        currentAudioUrl = audioUrl
+        isAudioPreparing = true
+        runCatching {
+            player.setMediaItem(MediaItem.fromUri(audioUrl), true)
+            player.prepare()
+            player.playWhenReady = true
+        }.onFailure {
+            isAudioPreparing = false
+            currentAudioUrl = null
+            AppLog.put("段评语音播放失败\n${it.localizedMessage}", it)
+            context?.toastOnUi(it.localizedMessage ?: getString(R.string.load_over_time))
+        }
+        refreshAudioPlaybackUi(previousAudioUrl, currentAudioUrl)
+    }
+
+    private fun releaseAudioPlayer() {
+        val previousAudioUrl = currentAudioUrl
+        isAudioPreparing = false
+        currentAudioUrl = null
+        reviewAudioPlayer?.runCatching {
+            removeListener(audioPlayerListener)
+            stop()
+            clearMediaItems()
+            release()
+        }
+        reviewAudioPlayer = null
+        refreshAudioPlaybackUi(previousAudioUrl, currentAudioUrl)
+    }
+
+    private fun refreshAudioPlaybackUi(oldAudioUrl: String?, newAudioUrl: String?) {
+        if (view == null) return
+        val affectedUrls = linkedSetOf<String>()
+        oldAudioUrl?.takeIf { it.isNotBlank() }?.let { affectedUrls.add(it) }
+        newAudioUrl?.takeIf { it.isNotBlank() }?.let { affectedUrls.add(it) }
+        if (affectedUrls.isEmpty()) return
+        binding.recyclerView.post {
+            if (view == null) return@post
+            adapter.getItems().forEachIndexed { index, item ->
+                val itemAudioUrl = item.audioUrl
+                if (item.itemType == TYPE_NORMAL &&
+                    !itemAudioUrl.isNullOrBlank() &&
+                    affectedUrls.contains(itemAudioUrl)
+                ) {
+                    adapter.updateItem(index, PAYLOAD_AUDIO_STATE)
+                }
+            }
+        }
     }
 
     private fun loadDetailPage(paragraphNum: Int, page: Int, append: Boolean) {
@@ -454,6 +564,7 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
     private companion object {
         const val TYPE_NORMAL = 0
         const val TYPE_MORE = 1
+        const val PAYLOAD_AUDIO_STATE = "review_audio_state"
     }
 
     private data class ReviewParseResult(
@@ -695,6 +806,10 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
             item: ReviewUiItem,
             payloads: MutableList<Any>
         ) {
+            if (payloads.any { it == PAYLOAD_AUDIO_STATE }) {
+                bindAudioState(binding, item)
+                return
+            }
             val tvContentLp = binding.tvContent.layoutParams as ViewGroup.MarginLayoutParams
             val basePadding = 8.dpToPx()
             val mainAvatarSize = 36.dpToPx()
@@ -754,6 +869,7 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
 
             val primaryColor = context.getCompatColor(R.color.primaryText)
             val secondaryColor = context.getCompatColor(R.color.secondaryText)
+            val contentColor = context.getCompatColor(R.color.reviewContentText)
             if (item.isReply) {
                 binding.tvName.gone()
                 binding.llBadges.gone()
@@ -784,7 +900,7 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
             val hasText = binding.tvContent.text?.isNotBlank() == true
             binding.tvContent.visibility = if (hasText) View.VISIBLE else View.GONE
             binding.tvContent.textSize = if (item.isReply) 14f else 16f
-            binding.tvContent.setTextColor(primaryColor)
+            binding.tvContent.setTextColor(contentColor)
             binding.tvContent.setPadding(0, 0, 0, 0)
             tvContentLp.topMargin = if (item.isReply) 0 else 4.dpToPx()
             binding.tvContent.layoutParams = tvContentLp
@@ -796,18 +912,7 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
                 ImageLoader.load(context, item.imageUrl).into(binding.ivMedia)
             }
 
-            if (item.audioUrl.isNullOrBlank()) {
-                binding.tvAudio.gone()
-            } else {
-                binding.tvAudio.visible()
-                binding.tvAudio.text = context.getString(R.string.review_play_audio)
-                binding.tvAudio.setCompoundDrawablesRelativeWithIntrinsicBounds(
-                    R.drawable.ic_play_24dp,
-                    0,
-                    0,
-                    0
-                )
-            }
+            bindAudioState(binding, item)
 
             binding.tvTime.text = item.time.orEmpty()
             binding.tvTime.visibility = if (item.time.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -853,8 +958,34 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
             binding.tvAudio.setOnClickListener {
                 val item = getItemByLayoutPosition(holder.layoutPosition) ?: return@setOnClickListener
                 val audioUrl = item.audioUrl ?: return@setOnClickListener
-                context.openUrl(audioUrl)
+                toggleAudioPlayback(audioUrl)
             }
+        }
+
+        private fun bindAudioState(binding: ItemReviewCommentBinding, item: ReviewUiItem) {
+            if (item.itemType == TYPE_MORE || item.audioUrl.isNullOrBlank()) {
+                binding.tvAudio.gone()
+                return
+            }
+            val isCurrentAudio = item.audioUrl == currentAudioUrl
+            val audioTextRes = when {
+                isCurrentAudio && isAudioPreparing -> R.string.loading
+                isCurrentAudio && reviewAudioPlayer?.isPlaying == true -> R.string.review_pause_audio
+                else -> R.string.review_play_audio
+            }
+            val audioIconRes = if (isCurrentAudio && reviewAudioPlayer?.isPlaying == true) {
+                R.drawable.ic_pause_24dp
+            } else {
+                R.drawable.ic_play_24dp
+            }
+            binding.tvAudio.visible()
+            binding.tvAudio.text = context.getString(audioTextRes)
+            binding.tvAudio.setCompoundDrawablesRelativeWithIntrinsicBounds(
+                audioIconRes,
+                0,
+                0,
+                0
+            )
         }
 
         private fun bindBadges(container: FlexboxLayout, badges: List<String>) {
@@ -866,12 +997,14 @@ class ReviewDetailDialog() : BaseDialogFragment(R.layout.dialog_recycler_view) {
             container.visible()
             badges.forEach { badge ->
                 if (badge.isAbsUrl() || badge.isDataUrl()) {
+                    val badgeHeight = 20.dpToPx()
                     val iv = ImageView(context).apply {
                         layoutParams = FlexboxLayout.LayoutParams(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
-                            16.dpToPx()
+                            badgeHeight
                         ).apply { setMargins(0, 0, 6.dpToPx(), 0) }
                         scaleType = ImageView.ScaleType.FIT_CENTER
+                        adjustViewBounds = true
                     }
                     ImageLoader.load(context, badge).into(iv)
                     container.addView(iv)

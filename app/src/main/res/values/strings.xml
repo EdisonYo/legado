@@ -1172,14 +1172,8 @@ Placeholders:
     <string name="rule_review_reply_name">Sub-comment name（replyNameRule）</string>
     <string name="rule_review_reply_badge">Sub-comment badge（replyBadgeRule）</string>
     <string name="rule_review_reply_content">Sub-comment content protocol（replyContentRule, text/img/audio/time）</string>
-    <string name="rule_review_content">Paragraph review content（contentRule）</string>
     <string name="rule_post_time">Release time of paragraph comments（postTimeRule）</string>
-    <string name="rule_review_quote">Paragraph comment replied to URL（reviewQuoteUrl）</string>
-    <string name="review_vote_down">Not like URL（voteDownUrl）</string>
-    <string name="review_vote_up">Like URL（voteUpUrl）</string>
-    <string name="post_review_url">Send a reply to URL（postReviewUrl）</string>
     <string name="post_quote_url">Send a reply paragraph comment URL（postQuoteUrl）</string>
-    <string name="delete_review_url">Delete paragraph comment URL（deleteUrl）</string>
     <string name="tag_explore_enabled">Flag: found enabled</string>
     <string name="tag_explore_disabled">Flag: found disabled</string>
     <string name="show_read_title_addition">show read title addition area</string>
@@ -1374,4 +1368,5 @@ Placeholders:
     <string name="review_more_replies">View more %1$d replies</string>
     <string name="review_collapse_replies">Collapse replies</string>
     <string name="review_play_audio">Play audio</string>
+    <string name="review_pause_audio">Pause audio</string>
 </resources>

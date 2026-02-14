@@ -55,7 +55,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:lineSpacingExtra="4dp"
-            android:textColor="@color/primaryText"
+            android:textColor="@color/reviewContentText"
             android:textSize="15sp" />
 
         <ImageView
@@ -75,10 +75,13 @@
             android:layout_marginTop="6dp"
             android:background="@drawable/bg_review_badge_chip"
             android:drawablePadding="4dp"
+            android:gravity="center_vertical"
+            android:includeFontPadding="false"
+            android:minHeight="28dp"
             android:paddingLeft="8dp"
-            android:paddingTop="4dp"
+            android:paddingTop="0dp"
             android:paddingRight="8dp"
-            android:paddingBottom="4dp"
+            android:paddingBottom="0dp"
             android:text="@string/review_play_audio"
             android:textColor="@color/secondaryText"
             android:textSize="12sp"

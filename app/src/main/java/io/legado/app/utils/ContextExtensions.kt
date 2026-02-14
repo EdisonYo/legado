@@ -348,8 +348,25 @@ val Context.externalCache: File
     get() = this.externalCacheDir ?: this.cacheDir
 
 fun Context.openUrl(url: String) {
+    openUrl(url, null)
+}
+
+fun Context.openUrl(url: String, mimeType: String?) {
     try {
-        startActivity(IntentHelp.getBrowserIntent(url))
+        if (mimeType.isNullOrBlank()) {
+            startActivity(IntentHelp.getBrowserIntent(url))
+            return
+        }
+        val uri = Uri.parse(url)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (intent.resolveActivity(packageManager) != null) {
+            startActivity(intent)
+        } else {
+            startActivity(IntentHelp.getBrowserIntent(url))
+        }
     } catch (e: Exception) {
         toastOnUi(e.localizedMessage ?: "open url error")
         e.printOnDebug()

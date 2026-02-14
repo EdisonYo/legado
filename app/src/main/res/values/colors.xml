@@ -38,6 +38,7 @@
 
     <color name="primaryText">#de000000</color>
     <color name="secondaryText">#8a000000</color>
+    <color name="reviewContentText">#cc000000</color>
     <color name="tv_text_summary">#8A2C2C2C</color>
     <color name="tv_text_book_detail">#dfdfdf</color>
     <color name="menu_color_default">#383838</color>

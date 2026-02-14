@@ -31,6 +31,7 @@
 
     <color name="primaryText">#ffffffff</color>
     <color name="secondaryText">#b3ffffff</color>
+    <color name="reviewContentText">#e6ffffff</color>
     <color name="tv_text_summary">#B3B3B3</color>
     <color name="menu_color_default">#b7b7b7</color>
 

@@ -35,6 +35,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.apache.commons.text.StringEscapeUtils
 import org.jsoup.nodes.Node
+import org.htmlunit.corejs.javascript.NativeArray
 import org.htmlunit.corejs.javascript.NativeObject
 import org.htmlunit.corejs.javascript.Scriptable
 import java.lang.ref.WeakReference
@@ -182,14 +183,16 @@ class AnalyzeRule(
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
-                result = if (sourceRule.mode == Mode.Json) {
-                    getAnalyzeByJSonPath(result).getStringList(sourceRule.rule)
-                } else if (sourceRule.getParamSize() > 1) {
-                    // get {{}}
-                    sourceRule.rule
-                } else {
-                    // 键值直接访问
-                    result[sourceRule.rule]
+                result = when (sourceRule.mode) {
+                    Mode.Js -> evalJS(sourceRule.rule, result)
+                    Mode.Json -> getAnalyzeByJSonPath(result).getStringList(sourceRule.rule)
+                    else -> if (sourceRule.getParamSize() > 1) {
+                        // get {{}}
+                        sourceRule.rule
+                    } else {
+                        // 键值直接访问
+                        result[sourceRule.rule]
+                    }
                 }
                 result?.let {
                     if (sourceRule.replaceRegex.isNotEmpty() && it is List<*>) {
@@ -278,17 +281,17 @@ class AnalyzeRule(
                 val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
                 sourceRule.makeUpRule(result)
-                result = if (sourceRule.mode == Mode.Json) {
-                    getAnalyzeByJSonPath(result).getString(sourceRule.rule)
-                } else if (sourceRule.getParamSize() > 1) {
-                    // get {{}}
-                    sourceRule.rule
-                } else {
-                    // 键值直接访问
-                    result[sourceRule.rule]?.toString()
-                }?.let {
-                    replaceRegex(it, sourceRule)
-                }
+                result = when (sourceRule.mode) {
+                    Mode.Js -> evalJS(sourceRule.rule, result)
+                    Mode.Json -> getAnalyzeByJSonPath(result).getString(sourceRule.rule)
+                    else -> if (sourceRule.getParamSize() > 1) {
+                        // get {{}}
+                        sourceRule.rule
+                    } else {
+                        // 键值直接访问
+                        result[sourceRule.rule]?.toString()
+                    }
+                }?.let { replaceRegex(it.toString(), sourceRule) }
             } else {
                 for (sourceRule in ruleList) {
                     putRule(sourceRule.putMap)
@@ -376,25 +379,60 @@ class AnalyzeRule(
         val ruleList = splitSourceRule(ruleStr, true)
         if (content != null && ruleList.isNotEmpty()) {
             result = content
-            for (sourceRule in ruleList) {
+            if (result is NativeObject) {
+                val sourceRule = ruleList.first()
                 putRule(sourceRule.putMap)
-                result ?: continue
+                sourceRule.makeUpRule(result)
                 val rule = sourceRule.rule
                 result = when (sourceRule.mode) {
-                    Mode.Regex -> AnalyzeByRegex.getElements(
-                        result.toString(),
-                        rule.splitNotBlank("&&")
-                    )
-
                     Mode.Js -> evalJS(rule, result)
                     Mode.Json -> getAnalyzeByJSonPath(result).getList(rule)
                     Mode.XPath -> getAnalyzeByXPath(result).getElements(rule)
-                    else -> getAnalyzeByJSoup(result).getElements(rule)
+                    else -> if (sourceRule.getParamSize() > 1) {
+                        rule
+                    } else {
+                        result[rule]
+                    }
+                }
+            } else {
+                for (sourceRule in ruleList) {
+                    putRule(sourceRule.putMap)
+                    result ?: continue
+                    val rule = sourceRule.rule
+                    result = when (sourceRule.mode) {
+                        Mode.Regex -> AnalyzeByRegex.getElements(
+                            result.toString(),
+                            rule.splitNotBlank("&&")
+                        )
+
+                        Mode.Js -> evalJS(rule, result)
+                        Mode.Json -> getAnalyzeByJSonPath(result).getList(rule)
+                        Mode.XPath -> getAnalyzeByXPath(result).getElements(rule)
+                        else -> getAnalyzeByJSoup(result).getElements(rule)
+                    }
                 }
             }
         }
-        result?.let {
-            return it as List<Any>
+        when (result) {
+            is List<*> -> {
+                return result.filterNotNull()
+            }
+
+            is Array<*> -> {
+                return result.filterNotNull()
+            }
+
+            is NativeArray -> {
+                val list = ArrayList<Any>()
+                val size = result.length.toInt()
+                for (i in 0 until size) {
+                    val value = result.get(i, result)
+                    if (value != null && value != Scriptable.NOT_FOUND) {
+                        list.add(value)
+                    }
+                }
+                return list
+            }
         }
         return ArrayList()
     }
@@ -781,6 +819,7 @@ class AnalyzeRule(
      * 执行JS
      */
     fun evalJS(jsStr: String, result: Any? = null): Any? {
+        val pageValue = get("page").toIntOrNull() ?: 1
         val bindings = buildScriptBindings { bindings ->
             bindings["java"] = this
             bindings["cookie"] = CookieStore
@@ -796,7 +835,7 @@ class AnalyzeRule(
             bindings["rssArticle"] = rssArticle
             bindings["paraIndex"] = get("paraIndex")
             bindings["paraData"] = get("paraData")
-            bindings["page"] = get("page")
+            bindings["page"] = pageValue
         }
         val topScope = source?.getShareScope(coroutineContext)
             ?: topScopeRef?.get()

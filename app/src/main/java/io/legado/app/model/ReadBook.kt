@@ -109,11 +109,12 @@ object ReadBook : CoroutineScope by MainScope() {
         durChapterIndex = book.durChapterIndex
         durChapterPos = book.durChapterPos
         isLocalBook = book.isLocal
+        // Refresh source before any UI callbacks to avoid stale rule usage on book switch.
+        upWebBook(book)
         clearTextChapter()
         callBack?.upContent()
         callBack?.upMenuView()
         callBack?.upPageAnim()
-        upWebBook(book)
         lastBookProgress = null
         webBookProgress = null
         TextFile.clear()
@@ -146,8 +147,8 @@ object ReadBook : CoroutineScope by MainScope() {
         if (prevTextChapter?.isCompleted == false) {
             prevTextChapter = null
         }
-        callBack?.upMenuView()
         upWebBook(book)
+        callBack?.upMenuView()
         synchronized(this) {
             loadingChapters.clear()
             downloadedChapters.clear()
