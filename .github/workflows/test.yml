@@ -264,29 +264,6 @@ jobs:
           python3 $GITHUB_WORKSPACE/.github/scripts/lzy_web.py "$path" "$LANZOU_FOLDER_ID"
           echo "[$(date -u -d '+8 hour' '+%Y.%m.%d %H:%M:%S')] 分享链接: $LANZOU_URL"
 
-  test_Branch:
-    needs: [ prepare, build ]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' && github.actor == 'skybbk1001' }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: apk/
-      - working-directory: apk/
-        run: mv */*.apk . ;rm -rf */
-      - name: Push To "test" Branch
-        run: |
-          cd $GITHUB_WORKSPACE/apk/
-          git init
-          git checkout -b test
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add origin "https://${{ github.actor }}:${{ secrets.ACTIONS_TOKEN }}@github.com/skybbk1001/legado"
-          git add *.apk
-          git commit -m "${{ needs.prepare.outputs.versionL }}"
-          git push -f -u origin test
-
   telegram:
     needs: [ prepare, build ]
     if: ${{ github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes' }}
