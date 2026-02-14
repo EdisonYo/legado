@@ -41,14 +41,37 @@ jobs:
       product: ${{ matrix.product }}
       VERSION: ${{ needs.prepare.outputs.version }}
       play: ${{ needs.prepare.outputs.play }}
+      RHINO_FORK_REPO: ${{ github.repository_owner }}/htmlunit-rhino-fork
+      CORE_JS_REPO: ${{ github.repository_owner }}/htmlunit-core-js
+      CORE_JS_REF: main
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout htmlunit-rhino-fork
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RHINO_FORK_REPO }}
+          ref: ${{ env.CORE_JS_REF }}
+          path: htmlunit-rhino-fork
+
+      - name: Checkout htmlunit-core-js
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CORE_JS_REPO }}
+          ref: ${{ env.CORE_JS_REF }}
+          path: htmlunit-core-js
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
+          cache: maven
+
+      - name: Install Forked htmlunit-core-js To mavenLocal
+        working-directory: htmlunit-core-js
+        run: |
+          mvn -U clean install -Dmaven.test.skip=true -Dgpg.skip=true -Dmaven.javadoc.skip=true
 
       - name: Release Apk Sign
         run: |
