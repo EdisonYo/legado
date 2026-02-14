@@ -43,7 +43,6 @@ jobs:
       play: ${{ needs.prepare.outputs.play }}
       RHINO_FORK_REPO: ${{ github.repository_owner }}/htmlunit-rhino-fork
       CORE_JS_REPO: ${{ github.repository_owner }}/htmlunit-core-js
-      CORE_JS_REF: main
     steps:
       - uses: actions/checkout@v4
 
@@ -51,14 +50,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RHINO_FORK_REPO }}
-          ref: ${{ env.CORE_JS_REF }}
           path: htmlunit-rhino-fork
 
       - name: Checkout htmlunit-core-js
         uses: actions/checkout@v4
         with:
           repository: ${{ env.CORE_JS_REPO }}
-          ref: ${{ env.CORE_JS_REF }}
           path: htmlunit-core-js
 
       - name: Set up JDK 17
