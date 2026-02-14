@@ -1,5 +1,6 @@
 package io.legado.app.base
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
@@ -46,7 +47,10 @@ abstract class BaseService : LifecycleService() {
             "onStartCommand $intent ${intent?.toUri(0)}"
         }
         if (!isForeground) {
-            startForegroundNotification()
+            if (!tryStartForegroundNotification()) {
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
             isForeground = true
         }
         return super.onStartCommand(intent, flags, startId)
@@ -92,8 +96,10 @@ abstract class BaseService : LifecycleService() {
             .addPermissions(Permissions.POST_NOTIFICATIONS)
             .rationale(R.string.notification_permission_rationale)
             .onGranted {
-                if (lifecycleScope.isActive) {
-                    startForegroundNotification()
+                if (lifecycleScope.isActive && !isForeground) {
+                    if (tryStartForegroundNotification()) {
+                        isForeground = true
+                    }
                 }
             }
             .request()
@@ -103,5 +109,38 @@ abstract class BaseService : LifecycleService() {
                 .rationale(R.string.ignore_battery_permission_rationale)
                 .request()
         }
+    }
+
+    private fun tryStartForegroundNotification(): Boolean {
+        return kotlin.runCatching {
+            startForegroundNotification()
+        }.fold(
+            onSuccess = { true },
+            onFailure = { error ->
+                if (!isForegroundStartDenied(error)) {
+                    throw error
+                }
+                LogUtils.e(simpleName, "startForegroundNotification denied: ${error.localizedMessage}")
+                false
+            }
+        )
+    }
+
+    private fun isForegroundStartDenied(error: Throwable): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            error is ForegroundServiceStartNotAllowedException
+        ) {
+            return true
+        }
+        val cause = error.cause
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            cause is ForegroundServiceStartNotAllowedException
+        ) {
+            return true
+        }
+        val className = error.javaClass.name
+        val causeName = cause?.javaClass?.name.orEmpty()
+        return className.contains("ForegroundServiceStartNotAllowedException") ||
+            causeName.contains("ForegroundServiceStartNotAllowedException")
     }
 }

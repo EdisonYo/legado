@@ -1,14 +1,12 @@
 package io.legado.app.model
 
 import android.content.Context
-import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.CacheManager
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.service.AutoTaskService
-import io.legado.app.utils.startService
 import io.legado.app.utils.getPrefBoolean
 import splitties.init.appCtx
 
@@ -36,29 +34,20 @@ object AutoTask {
     }
 
     fun start(context: Context) {
-        context.startService<AutoTaskService> {
-            action = IntentAction.start
-        }
+        AutoTaskService.start(context)
     }
 
     fun stop(context: Context) {
-        context.startService<AutoTaskService> {
-            action = IntentAction.stop
-        }
+        AutoTaskService.stop(context)
     }
 
     fun refreshSchedule(context: Context = appCtx) {
         if (!context.getPrefBoolean(PreferKey.autoTaskService)) return
-        context.startService<AutoTaskService> {
-            action = IntentAction.refreshSchedule
-        }
+        AutoTaskService.refresh(context)
     }
 
     fun runOnce(context: Context, id: String) {
-        context.startService<AutoTaskService> {
-            action = IntentAction.runOnce
-            putExtra(AutoTaskService.EXTRA_TASK_ID, id)
-        }
+        AutoTaskService.runOnce(context, id)
     }
 
     fun buildSource(task: AutoTaskRule): BookSource {
