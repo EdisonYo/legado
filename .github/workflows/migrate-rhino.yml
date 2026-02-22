@@ -1,0 +1,70 @@
+name: Migrate Rhino to HtmlUnit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update libs.versions.toml
+        run: |
+          sed -i '/^rhino = /d' gradle/libs.versions.toml
+          sed -i '/^mozilla-rhino = /d' gradle/libs.versions.toml
+          sed -i '/^\[versions\]$/a htmlunit-core-js = "4.21.0"' gradle/libs.versions.toml
+          sed -i '/^\[libraries\]$/a htmlunit-core-js = { module = "org.htmlunit:htmlunit-core-js", version.ref = "htmlunit-core-js" }' gradle/libs.versions.toml
+
+      - name: Update modules/rhino/build.gradle
+        run: |
+          cat > modules/rhino/build.gradle << 'EOF'
+          plugins {
+              id 'com.android.library'
+              alias libs.plugins.kotlin.android
+          }
+          
+          android {
+              namespace 'com.script.rhino'
+              compileSdk = libs.versions.compileSdk.get().toInteger()
+              defaultConfig {
+                  minSdk = libs.versions.minSdk.get().toInteger()
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          
+          dependencies {
+              implementation(libs.htmlunit.core.js)
+              implementation(libs.kotlinx.coroutines.core)
+          }
+          EOF
+
+      - name: Remove old Rhino JAR
+        run: rm -rf modules/rhino/lib/
+
+      - name: Update RhinoScriptEngine.kt
+        run: |
+          sed -i 's/Context.FEATURE_ENABLE_JAVA_MAP_ACCESS -> true/Context.FEATURE_ENABLE_JAVA_MAP_ACCESS -> false/' \
+            modules/rhino/src/main/java/com/script/rhino/RhinoScriptEngine.kt
+
+      - name: Update app/build.gradle excludes
+        run: |
+          sed -i '/exclude group: .com.google.firebase/a\        exclude group: '\''org.mozilla'\'', module: '\''rhino'\''\n        exclude group: '\''org.mozilla'\'', module: '\''rhino-runtime'\''\n        exclude group: '\''org.mozilla'\'', module: '\''rhino-engine'\''' \
+            app/build.gradle
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Migrate to HtmlUnit Core JS 4.21.0" || exit 0
+          git push
+
+      - name: Build check
+        run: ./gradlew :modules:rhino:build --no-daemon || true
+
