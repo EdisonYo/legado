@@ -276,11 +276,11 @@ interface JsExtensions : JsEncodeUtils {
         if (image.isBlank()) {
             return ""
         }
-        val ocrMode = MlKitOcr.OcrMode.from(mode)
+        val ocrMode = OcrEngine.OcrMode.from(mode)
             ?: throw NoStackTraceException("OCR mode无效: $mode，可选 raw(标准模式)/line/captcha")
         return kotlin.runCatching {
             val bytes = resolveOcrImageBytes(image.trim())
-            MlKitOcr.recognize(bytes, ocrMode)
+            OcrEngine.recognize(bytes, ocrMode)
         }.onFailure {
             AppLog.put("ocr($image) error\n${it.localizedMessage}", it)
         }.getOrElse {
