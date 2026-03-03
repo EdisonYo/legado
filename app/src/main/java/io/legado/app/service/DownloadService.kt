@@ -61,10 +61,15 @@ class DownloadService : BaseService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            IntentAction.start -> startDownload(
-                intent.getStringExtra("url"),
-                intent.getStringExtra("fileName")
-            )
+            IntentAction.start -> {
+                val urls = intent.getStringArrayListExtra("urls")
+                    ?.filter { it.isNotBlank() }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: intent.getStringExtra("url")
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { listOf(it) }
+                startDownload(urls, intent.getStringExtra("fileName"))
+            }
 
             IntentAction.play -> {
                 val id = intent.getLongExtra("downloadId", 0)
@@ -87,28 +92,21 @@ class DownloadService : BaseService() {
      * 开始下载
      */
     @Synchronized
-    private fun startDownload(url: String?, fileName: String?) {
-        if (url == null || fileName == null) {
+    private fun startDownload(urls: List<String>?, fileName: String?) {
+        if (urls.isNullOrEmpty() || fileName == null) {
             if (downloads.isEmpty()) {
                 stopSelf()
             }
             return
         }
-        if (downloads.values.any { it.url == url }) {
+        if (downloads.values.any { it.fileName == fileName }) {
             toastOnUi("已在下载列表")
             return
         }
         kotlin.runCatching {
-            // 指定下载地址
-            val request = DownloadManager.Request(Uri.parse(url))
-            // 设置通知
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
-            // 设置下载文件保存的路径和文件名
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-            // 添加一个下载任务
-            val downloadId = downloadManager.enqueue(request)
+            val downloadId = createDownloadTask(urls.first(), fileName)
             downloads[downloadId] =
-                DownloadInfo(url, fileName, NotificationId.Download + downloads.size)
+                DownloadInfo(urls, fileName, NotificationId.Download + downloads.size)
             queryState()
             if (upStateJob == null) {
                 checkDownloadState()
@@ -122,6 +120,17 @@ class DownloadService : BaseService() {
             toastOnUi(msg)
             AppLog.put(msg, it)
         }
+    }
+
+    private fun createDownloadTask(url: String, fileName: String): Long {
+        // 指定下载地址
+        val request = DownloadManager.Request(Uri.parse(url))
+        // 设置通知
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN)
+        // 设置下载文件保存的路径和文件名
+        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        // 添加一个下载任务
+        return downloadManager.enqueue(request)
     }
 
     /**
@@ -182,7 +191,9 @@ class DownloadService : BaseService() {
                     val id = cursor.getLong(idIndex)
                     val progress = cursor.getInt(progressIndex)
                     val max = cursor.getInt(fileSizeIndex)
-                    val status = when (cursor.getInt(statusIndex)) {
+                    val statusCode = cursor.getInt(statusIndex)
+                    var skipNotify = false
+                    val status = when (statusCode) {
                         DownloadManager.STATUS_PAUSED -> getString(R.string.pause)
                         DownloadManager.STATUS_PENDING -> getString(R.string.wait_download)
                         DownloadManager.STATUS_RUNNING -> getString(R.string.downloading)
@@ -191,8 +202,19 @@ class DownloadService : BaseService() {
                             getString(R.string.download_success)
                         }
 
-                        DownloadManager.STATUS_FAILED -> getString(R.string.download_error)
+                        DownloadManager.STATUS_FAILED -> {
+                            if (switchToNextUrl(id)) {
+                                skipNotify = true
+                                getString(R.string.wait_download)
+                            } else {
+                                getString(R.string.download_error)
+                            }
+                        }
+
                         else -> getString(R.string.unknown_state)
+                    }
+                    if (skipNotify) {
+                        continue
                     }
                     downloads[id]?.let { downloadInfo ->
                         upDownloadNotification(
@@ -207,6 +229,28 @@ class DownloadService : BaseService() {
                 } while (cursor.moveToNext())
             }
         }
+    }
+
+    @Synchronized
+    private fun switchToNextUrl(downloadId: Long): Boolean {
+        val oldInfo = downloads[downloadId] ?: return false
+        val nextIndex = oldInfo.currentUrlIndex + 1
+        if (nextIndex >= oldInfo.urls.size) {
+            return false
+        }
+        return kotlin.runCatching {
+            val nextUrl = oldInfo.urls[nextIndex]
+            downloadManager.remove(downloadId)
+            val newId = createDownloadTask(nextUrl, oldInfo.fileName)
+            val newInfo = oldInfo.copy(currentUrlIndex = nextIndex)
+            downloads.remove(downloadId)
+            completeDownloads.remove(downloadId)
+            downloads[newId] = newInfo
+            toastOnUi("下载源不可用，已切换备用源")
+            true
+        }.onFailure {
+            AppLog.put("切换备用下载源失败", it)
+        }.getOrDefault(false)
     }
 
     /**
@@ -270,9 +314,10 @@ class DownloadService : BaseService() {
     }
 
     private data class DownloadInfo(
-        val url: String,
+        val urls: List<String>,
         val fileName: String,
         val notificationId: Int,
+        val currentUrlIndex: Int = 0,
         val startTime: Long = System.currentTimeMillis()
     )
 

@@ -25,27 +25,31 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
         }
 
     private suspend fun getLatestRelease(): List<AppReleaseInfo> {
-        val lastReleaseUrl = if (checkVariant.isBeta()) {
-            "https://api.github.com/repos/skybbk1001/legado/releases/tags/beta"
-        } else {
-            "https://api.github.com/repos/skybbk1001/legado/releases/latest"
-        }
-        val res = okHttpClient.newCallResponse {
-            url(lastReleaseUrl)
-        }
-        if (!res.isSuccessful) {
-            throw NoStackTraceException("获取新版本出错(${res.code})")
-        }
-        val body = res.body.text()
-        if (body.isBlank()) {
-            throw NoStackTraceException("获取新版本出错")
-        }
-        return GSON.fromJsonObject<GithubRelease>(body)
-            .getOrElse {
-                throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
+        val apiUrls = AppUpdateSourceConfig.releaseApiUrls(checkVariant.isBeta())
+        var lastError: Throwable? = null
+        apiUrls.forEach { apiUrl ->
+            kotlin.runCatching {
+                val res = okHttpClient.newCallResponse {
+                    url(apiUrl)
+                }
+                if (!res.isSuccessful) {
+                    throw NoStackTraceException("获取新版本出错(${res.code})")
+                }
+                val body = res.body.text()
+                if (body.isBlank()) {
+                    throw NoStackTraceException("获取新版本出错")
+                }
+                return GSON.fromJsonObject<GithubRelease>(body)
+                    .getOrElse {
+                        throw NoStackTraceException("获取新版本出错 " + it.localizedMessage)
+                    }
+                    .gitReleaseToAppReleaseInfo()
+                    .sortedByDescending { it.createdAt }
+            }.onFailure {
+                lastError = it
             }
-            .gitReleaseToAppReleaseInfo()
-            .sortedByDescending { it.createdAt }
+        }
+        throw NoStackTraceException("获取新版本出错 " + (lastError?.localizedMessage ?: "未知错误"))
     }
 
     override fun check(
@@ -56,14 +60,16 @@ object AppUpdateGitHub : AppUpdate.AppUpdateInterface {
                 .filter { it.appVariant == checkVariant }
                 .firstOrNull { it.versionName > AppConst.appInfo.versionName }
                 ?.let {
+                    val downloadUrls = AppUpdateSourceConfig.downloadUrls(it.downloadUrl)
                     return@async AppUpdate.UpdateInfo(
                         it.versionName,
                         it.note,
-                        it.downloadUrl,
-                        it.name
+                        downloadUrls.firstOrNull() ?: it.downloadUrl,
+                        it.name,
+                        downloadUrls
                     )
                 }
                 ?: throw NoStackTraceException("已是最新版本")
-        }.timeout(10000)
+        }.timeout(20000)
     }
 }
