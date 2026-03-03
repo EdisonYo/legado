@@ -44,6 +44,7 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
 
     private val binding by viewBinding(DialogLoginBinding::bind)
     private val viewModel by activityViewModels<SourceLoginViewModel>()
+    private var currentLoginUi: List<RowUi>? = null
 
     override fun onStart() {
         super.onStart()
@@ -54,60 +55,13 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
         val source = viewModel.source ?: return
         binding.toolBar.setBackgroundColor(primaryColor)
         binding.toolBar.title = getString(R.string.login_source, source.getTag())
-        val loginInfo = source.getLoginInfoMap()
-        val loginUi = source.loginUi()
-        try {
-            loginUi?.forEachIndexed { index, rowUi ->
-                when (rowUi.type) {
-                    RowUi.Type.text -> ItemSourceEditBinding.inflate(
-                        layoutInflater,
-                        binding.root,
-                        false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        it.root.id = index + 1000
-                        it.textInputLayout.hint = rowUi.name
-                        it.editText.setText(loginInfo?.get(rowUi.name))
-                    }
-
-                    RowUi.Type.password -> ItemSourceEditBinding.inflate(
-                        layoutInflater,
-                        binding.root,
-                        false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        it.root.id = index + 1000
-                        it.textInputLayout.hint = rowUi.name
-                        it.editText.inputType =
-                            InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
-                        it.editText.setText(loginInfo?.get(rowUi.name))
-                    }
-
-                    RowUi.Type.button -> ItemFilletTextBinding.inflate(
-                        layoutInflater,
-                        binding.root,
-                        false
-                    ).let {
-                        binding.flexbox.addView(it.root)
-                        rowUi.style().apply(it.root)
-                        it.root.id = index + 1000
-                        it.textView.text = rowUi.name
-                        it.textView.setPadding(16.dpToPx())
-                        it.root.onClick {
-                            handleButtonClick(source, rowUi, loginUi)
-                        }
-                    }
-                }
-            }
-        } catch (e: NullPointerException) {
-            AppLog.put("登录UI JSON 数据错误", e, true)
-        }
+        renderLoginUi(source, source.getLoginInfoMap())
         binding.toolBar.inflateMenu(R.menu.source_login)
         binding.toolBar.menu.applyTint(requireContext())
         binding.toolBar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.menu_ok -> {
-                    val loginData = getLoginData(loginUi)
+                    val loginData = getLoginData(currentLoginUi)
                     login(source, loginData)
                 }
 
@@ -147,6 +101,67 @@ class SourceLoginDialog : BaseDialogFragment(R.layout.dialog_login, true) {
                     AppLog.put("LoginUI Button ${rowUi.name} JavaScript error", e)
                 }
             }
+            ensureActive()
+            withContext(Main) {
+                val preserveInput = getLoginData(currentLoginUi)
+                renderLoginUi(source, preserveInput)
+            }
+        }
+    }
+
+    private fun renderLoginUi(source: BaseSource, prefills: Map<String, String>?) {
+        val loginUi = source.loginUi()
+        currentLoginUi = loginUi
+        binding.flexbox.removeAllViews()
+        try {
+            loginUi?.forEachIndexed { index, rowUi ->
+                when (rowUi.type) {
+                    RowUi.Type.text -> ItemSourceEditBinding.inflate(
+                        layoutInflater,
+                        binding.root,
+                        false
+                    ).let {
+                        binding.flexbox.addView(it.root)
+                        it.root.id = index + 1000
+                        it.textInputLayout.hint = rowUi.name
+                        it.textInputLayout.isHintAnimationEnabled = false
+                        it.editText.setText(prefills?.get(rowUi.name))
+                        it.textInputLayout.isHintAnimationEnabled = true
+                    }
+
+                    RowUi.Type.password -> ItemSourceEditBinding.inflate(
+                        layoutInflater,
+                        binding.root,
+                        false
+                    ).let {
+                        binding.flexbox.addView(it.root)
+                        it.root.id = index + 1000
+                        it.textInputLayout.hint = rowUi.name
+                        it.editText.inputType =
+                            InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
+                        it.textInputLayout.isHintAnimationEnabled = false
+                        it.editText.setText(prefills?.get(rowUi.name))
+                        it.textInputLayout.isHintAnimationEnabled = true
+                    }
+
+                    RowUi.Type.button -> ItemFilletTextBinding.inflate(
+                        layoutInflater,
+                        binding.root,
+                        false
+                    ).let {
+                        binding.flexbox.addView(it.root)
+                        rowUi.style().apply(it.root)
+                        it.root.id = index + 1000
+                        it.textView.text = rowUi.name
+                        it.textView.setPadding(16.dpToPx())
+                        it.root.onClick {
+                            handleButtonClick(source, rowUi, loginUi)
+                        }
+                    }
+                }
+            }
+        } catch (e: NullPointerException) {
+            AppLog.put("登录UI JSON 数据错误", e, true)
         }
     }
 

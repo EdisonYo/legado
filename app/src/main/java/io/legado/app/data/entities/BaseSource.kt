@@ -6,6 +6,7 @@ import com.script.buildScriptBindings
 import com.script.rhino.RhinoScriptEngine
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern.JS_PATTERN
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.CacheManager
 import io.legado.app.help.JsExtensions
@@ -65,20 +66,38 @@ interface BaseSource : JsExtensions {
         return this
     }
 
+    private fun extractInlineJs(rule: String?): String? {
+        val text = rule?.trim().orEmpty()
+        if (text.isBlank()) return null
+        val matcher = JS_PATTERN.matcher(text)
+        if (!matcher.matches()) return null
+        return (matcher.group(2) ?: matcher.group(1))?.trim()
+    }
+
     fun loginUi(): List<RowUi>? {
-        return GSON.fromJsonArray<RowUi>(loginUi).onFailure {
+        val rawLoginUi = loginUi?.trim().orEmpty()
+        if (rawLoginUi.isBlank()) return null
+        val loginUiJson = try {
+            val jsRule = extractInlineJs(rawLoginUi)
+            if (jsRule != null) {
+                val result = evalJS(jsRule)
+                if (result is String) result else GSON.toJson(result)
+            } else {
+                rawLoginUi
+            }
+        } catch (e: Exception) {
+            AppLog.put("解析登录UI规则出错", e)
+            return null
+        }
+        return GSON.fromJsonArray<RowUi>(loginUiJson).onFailure {
             it.printOnDebug()
         }.getOrNull()
     }
 
     fun getLoginJs(): String? {
-        val loginJs = loginUrl
-        return when {
-            loginJs == null -> null
-            loginJs.startsWith("@js:") -> loginJs.substring(4)
-            loginJs.startsWith("<js>") -> loginJs.substring(4, loginJs.lastIndexOf("<"))
-            else -> loginJs
-        }
+        val loginJs = loginUrl?.trim()
+        if (loginJs.isNullOrBlank()) return null
+        return extractInlineJs(loginJs) ?: loginJs
     }
 
     /**
@@ -105,14 +124,7 @@ interface BaseSource : JsExtensions {
     fun getHeaderMap(hasLoginHeader: Boolean = false) = HashMap<String, String>().apply {
         header?.let {
             try {
-                val json = when {
-                    it.startsWith("@js:", true) -> evalJS(it.substring(4)).toString()
-                    it.startsWith("<js>", true) -> evalJS(
-                        it.substring(4, it.lastIndexOf("<"))
-                    ).toString()
-
-                    else -> it
-                }
+                val json = extractInlineJs(it)?.let { js -> evalJS(js).toString() } ?: it
                 GSONStrict.fromJsonObject<Map<String, String>>(json).getOrNull()?.let { map ->
                     putAll(map)
                 } ?: GSON.fromJsonObject<Map<String, String>>(json).getOrNull()?.let { map ->
