@@ -29,6 +29,7 @@ import org.htmlunit.corejs.javascript.NativeJavaPackage
 import org.htmlunit.corejs.javascript.ScriptRuntime
 import org.htmlunit.corejs.javascript.Scriptable
 import org.htmlunit.corejs.javascript.WrapFactory
+import org.htmlunit.corejs.javascript.lc.type.TypeInfo
 
 /**
  * This wrap factory is used for security reasons. JSR 223 script
@@ -51,12 +52,13 @@ object RhinoWrapFactory : WrapFactory() {
         cx: Context,
         scope: Scriptable?,
         javaObject: Any,
-        staticType: Class<*>?
+        staticType: TypeInfo?
     ): Scriptable? {
         if (!RhinoClassShutter.visibleToScripts(javaObject)) {
             return null
         }
-        return wrapOrNull(scope, javaObject, staticType)
+        val staticClass = staticType?.asClass()
+        return wrapOrNull(scope, javaObject, staticClass)
             ?: super.wrapAsJavaObject(cx, scope, javaObject, staticType)
     }
 
