@@ -398,8 +398,13 @@ class HttpReadAloudService : BaseReadAloudService(),
     }
 
     private fun md5SpeakFileName(content: String, textChapter: TextChapter? = this.textChapter): String {
+        val tts = ReadAloud.httpTTS
+        val sourceVariable = tts?.getVariable().orEmpty()
+        val loginHeader = tts?.getLoginHeader().orEmpty()
         return MD5Utils.md5Encode16(textChapter?.title ?: "") + "_" +
-                MD5Utils.md5Encode16("${ReadAloud.httpTTS?.url}-|-$speechRate-|-$content")
+                MD5Utils.md5Encode16(
+                    "${tts?.url}-|-$speechRate-|-$sourceVariable-|-$loginHeader-|-$content"
+                )
     }
 
     private fun createSilentSound(fileName: String) {
