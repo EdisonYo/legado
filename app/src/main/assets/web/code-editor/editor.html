@@ -511,9 +511,6 @@
     })();
   </script>
 
-  <script src="standalone.min.js"></script>
-  <script src="babel.js"></script>
-  <script src="estree.js"></script>
   <script src="codemirror.bundle.js" onerror="
         window.__LEGADO_BOOT_ERROR &&
           window.__LEGADO_BOOT_ERROR('codemirror.bundle.js 加载失败')
@@ -522,6 +519,69 @@
         window.__LEGADO_BOOT_ERROR &&
           window.__LEGADO_BOOT_ERROR('completions.js 加载失败')
       "></script>
+  <script>
+    (function () {
+      let prettierReadyPromise = null;
+      const PRETTIER_SCRIPTS = ["standalone.min.js", "babel.js", "estree.js"];
+
+      function hasPrettierRuntime() {
+        return (
+          !!window.prettier &&
+          !!window.prettierPlugins &&
+          !!window.prettierPlugins.babel &&
+          !!window.prettierPlugins.estree
+        );
+      }
+
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const node = document.createElement("script");
+          node.src = src;
+          node.async = true;
+          node.onload = resolve;
+          node.onerror = () => reject(new Error(src + " 加载失败"));
+          document.head.appendChild(node);
+        });
+      }
+
+      async function ensurePrettierReady() {
+        if (hasPrettierRuntime()) return true;
+        if (!prettierReadyPromise) {
+          prettierReadyPromise = (async () => {
+            for (const src of PRETTIER_SCRIPTS) {
+              await loadScript(src);
+            }
+            if (!hasPrettierRuntime()) {
+              throw new Error("Prettier 运行时加载不完整");
+            }
+            return true;
+          })().catch((e) => {
+            prettierReadyPromise = null;
+            throw e;
+          });
+        }
+        return prettierReadyPromise;
+      }
+
+      function warmupPrettier(onReady) {
+        const run = () => {
+          ensurePrettierReady()
+            .then(() => {
+              if (typeof onReady === "function") onReady();
+            })
+            .catch(() => { });
+        };
+        if (typeof window.requestIdleCallback === "function") {
+          window.requestIdleCallback(run, { timeout: 3500 });
+        } else {
+          window.setTimeout(run, 1200);
+        }
+      }
+
+      window.__ensurePrettierReady = ensurePrettierReady;
+      window.__warmupPrettier = warmupPrettier;
+    })();
+  </script>
   <script>
     // 早期兜底：如果主脚本未执行，显示提示
     window.setTimeout(function () {
@@ -701,9 +761,11 @@
         const themeComp = new Compartment();
         const fontComp = new Compartment();
         const indentComp = new Compartment();
+        const autoIndentComp = new Compartment();
         const mediaDark = window.matchMedia
           ? window.matchMedia("(prefers-color-scheme: dark)")
           : null;
+        let isWrappedScriptMode = false;
 
         function isDarkTheme() {
           if (themeMode === "auto") return !!(mediaDark && mediaDark.matches);
@@ -814,6 +876,50 @@
           return exts;
         }
 
+        function makeAutoIndentExtensions(enableAutoIndent) {
+          const exts = [];
+          if (enableAutoIndent && typeof indentOnInput === "function") {
+            exts.push(indentOnInput());
+          }
+          return exts;
+        }
+
+        function updateWrappedScriptMode(rawText) {
+          const nextMode = !!detectWrapper(rawText || "");
+          if (nextMode === isWrappedScriptMode) return;
+          isWrappedScriptMode = nextMode;
+          if (view) {
+            view.dispatch({
+              effects: autoIndentComp.reconfigure(
+                makeAutoIndentExtensions(!isWrappedScriptMode),
+              ),
+            });
+          }
+        }
+
+        function shouldIncreaseIndentAfterLine(textBeforeCursor) {
+          const sanitized = String(textBeforeCursor || "")
+            .replace(/\/\/.*$/, "")
+            .trim();
+          if (!sanitized) return false;
+          const last = sanitized[sanitized.length - 1];
+          return last === "{" || last === "[" || last === "(";
+        }
+
+        function getBracketExpandPair(beforeCursorText, afterCursorText) {
+          const before = String(beforeCursorText || "");
+          const after = String(afterCursorText || "");
+          const leftMatch = before.match(/(\S)\s*$/);
+          const rightMatch = after.match(/^\s*(\S)/);
+          if (!leftMatch || !rightMatch) return null;
+          const left = leftMatch[1];
+          const right = rightMatch[1];
+          if (left === "{" && right === "}") return "{}";
+          if (left === "[" && right === "]") return "[]";
+          if (left === "(" && right === ")") return "()";
+          return null;
+        }
+
         function insertTab(view) {
           if (indentMore && !view.state.selection.main.empty) {
             return indentMore(view);
@@ -826,17 +932,40 @@
           const { state } = view;
           const { from, to, head } = state.selection.main;
           const line = state.doc.lineAt(head);
+          const beforeCursorText = state.doc.sliceString(line.from, from);
+          const afterCursorText = state.doc.sliceString(from, line.to);
           const trimmedLine = line.text.trim();
+          const isBlankLine = trimmedLine.length === 0;
           const isWrapperLine =
             /^@js:\s*$/.test(trimmedLine) || /^<js>\s*$/i.test(trimmedLine);
           if (
+            !isWrappedScriptMode &&
             !isWrapperLine &&
+            !isBlankLine &&
             line.length < LONG_LINE_SCROLL_LIMIT &&
             typeof insertNewlineAndIndent === "function"
           ) {
             return insertNewlineAndIndent(view);
           }
-          let baseIndent = (line.text.match(/^\s*/) || [""])[0];
+          let baseIndent = (beforeCursorText.match(/^\s*/) || [""])[0];
+          const canExpandBracketBlock = from === to;
+          const bracketPair = canExpandBracketBlock
+            ? getBracketExpandPair(beforeCursorText, afterCursorText)
+            : null;
+          if (bracketPair) {
+            const innerIndent = baseIndent + " ".repeat(tabSize);
+            const insertBlock = "\n" + innerIndent + "\n" + baseIndent;
+            const blockCursor = from + 1 + innerIndent.length;
+            view.dispatch({
+              changes: { from, to, insert: insertBlock },
+              selection: { anchor: blockCursor, head: blockCursor },
+              effects: EditorView.scrollIntoView(blockCursor, { y: "nearest" }),
+            });
+            return true;
+          }
+          if (isWrappedScriptMode && shouldIncreaseIndentAfterLine(beforeCursorText)) {
+            baseIndent += " ".repeat(tabSize);
+          }
           const insert = "\n" + baseIndent;
           const cursor = from + insert.length;
           view.dispatch({
@@ -1189,6 +1318,19 @@
             }),
           ];
         }
+
+        function isCustomCompletionContext(state) {
+          if (!completionRegex) return false;
+          const main = state.selection.main;
+          if (!main || main.from !== main.to) return false;
+          const pos = main.head;
+          const start = Math.max(0, pos - 160);
+          const textBefore = state.sliceDoc(start, pos);
+          const token = textBefore.match(/[A-Za-z_$][\w$]*\.[\w$]*$/);
+          if (!token) return false;
+          return completionRegex.test(token[0]);
+        }
+
         function buildExtensions() {
           const tabKey = {
             key: "Tab",
@@ -1221,8 +1363,14 @@
           ) {
             exts.push(indentComp.of(indentUnit.of(" ".repeat(tabSize))));
           }
+          if (autoIndentComp) {
+            exts.push(
+              autoIndentComp.of(
+                makeAutoIndentExtensions(!isWrappedScriptMode),
+              ),
+            );
+          }
           if (typeof javascript === "function") exts.push(javascript());
-          if (typeof indentOnInput === "function") exts.push(indentOnInput());
           if (typeof closeBrackets === "function") exts.push(closeBrackets());
           if (typeof bracketMatching === "function")
             exts.push(bracketMatching());
@@ -1234,17 +1382,15 @@
           if (typeof highlightSelectionMatches === "function")
             exts.push(highlightSelectionMatches());
           if (typeof closeCompletion === "function") {
+            let hadCustomCompletionContext = false;
             exts.push(
               EditorView.updateListener.of((update) => {
-                if (!update.docChanged) return;
-                const isDelete = update.transactions.some(
-                  (t) =>
-                    t.isUserEvent &&
-                    (t.isUserEvent("delete") ||
-                      t.isUserEvent("delete.backward") ||
-                      t.isUserEvent("delete.forward")),
-                );
-                if (isDelete) closeCompletion(update.view);
+                if (!update.docChanged && !update.selectionSet) return;
+                const isCustomContext = isCustomCompletionContext(update.state);
+                if (hadCustomCompletionContext && !isCustomContext) {
+                  closeCompletion(update.view);
+                }
+                hadCustomCompletionContext = isCustomContext;
               }),
             );
           }
@@ -1263,8 +1409,8 @@
           exts.push(
             EditorView.updateListener.of((update) => {
               if (!update.docChanged) return;
-              clearTimeout(lintTimer);
-              lintTimer = setTimeout(checkSyntax, LINT_DELAY);
+              updateWrappedScriptMode(update.state.doc.toString());
+              scheduleSyntaxCheck();
             }),
           );
           if (themeComp) exts.push(themeComp.of(makeTheme()));
@@ -1319,6 +1465,11 @@
           } else if (typeof mediaDark.addListener === "function") {
             mediaDark.addListener(syncAutoTheme);
           }
+        }
+        if (typeof window.__warmupPrettier === "function") {
+          window.__warmupPrettier(() => {
+            scheduleSyntaxCheck();
+          });
         }
 
         function getCode() {
@@ -1424,6 +1575,21 @@
           return prettierPluginsCache;
         }
 
+        async function ensurePrettierReady(showLoadingToast) {
+          if (window.prettier && getPrettierPlugins()) return true;
+          if (typeof window.__ensurePrettierReady !== "function") return false;
+          if (showLoadingToast) showToast("加载格式化引擎...");
+          try {
+            await window.__ensurePrettierReady();
+            prettierPluginsCache = null;
+            return !!(window.prettier && getPrettierPlugins());
+          } catch (e) {
+            appendLog("error", e && e.message ? e.message : e);
+            if (showLoadingToast) showToast("格式化引擎加载失败");
+            return false;
+          }
+        }
+
         async function formatWithPrettier(codeText, parser) {
           if (!window.prettier || !window.prettierPlugins) {
             throw new Error("Prettier 未加载");
@@ -1435,7 +1601,7 @@
           const width = wrapElements
             ? printWidth
             : Math.max(printWidth, 99999);
-          return window.prettier.format(codeText, {
+          const formatted = await window.prettier.format(codeText, {
             parser: parser || "babel",
             plugins: plugins,
             tabWidth: tabSize,
@@ -1444,14 +1610,14 @@
             trailingComma: trailingComma ? "es5" : "none",
             printWidth: width,
           });
+          return formatted.replace(/\r?\n$/, "");
         }
 
         async function formatCode() {
           const raw = getCode();
           const text = raw.trim();
           if (!text) return;
-          if (!window.prettier || !getPrettierPlugins()) {
-            showToast("Prettier 未加载");
+          if (!(await ensurePrettierReady(true))) {
             return;
           }
           showToast("格式化中...");
@@ -1806,6 +1972,11 @@
         let lintTimer = null;
         let lintVersion = 0;
 
+        function scheduleSyntaxCheck() {
+          clearTimeout(lintTimer);
+          lintTimer = setTimeout(checkSyntax, LINT_DELAY);
+        }
+
         function getBodyLineOffset(raw, wrapper) {
           if (!wrapper) return 0;
           if (wrapper.type === "prefix") {
@@ -1871,7 +2042,8 @@
         }
 
         async function checkSyntax() {
-          if (!window.prettier || !getPrettierPlugins()) return;
+          const plugins = getPrettierPlugins();
+          if (!window.prettier || !plugins) return;
           const raw = getCode();
           const text = raw.trim();
           if (!text) {
@@ -1898,7 +2070,7 @@
           try {
             await window.prettier.format(body, {
               parser: "babel",
-              plugins: getPrettierPlugins(),
+              plugins: plugins,
               tabWidth: tabSize,
             });
             if (version === lintVersion) showSyntaxOk();
@@ -1951,8 +2123,8 @@
 
         window.setCodeFromAndroid = function (b64) {
           resetDoc(b64ToUtf8(b64), { addToHistory: false });
-          clearTimeout(lintTimer);
-          lintTimer = setTimeout(checkSyntax, LINT_DELAY);
+          updateWrappedScriptMode(getCode());
+          scheduleSyntaxCheck();
         };
 
         window.__save = function () {

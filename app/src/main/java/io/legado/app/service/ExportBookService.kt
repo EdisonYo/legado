@@ -13,6 +13,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.withSave
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import io.legado.app.R
@@ -59,6 +60,7 @@ import io.legado.app.utils.writeFile
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collectIndexed
 import kotlinx.coroutines.flow.flow
@@ -80,7 +82,6 @@ import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.coroutines.coroutineContext
 import kotlin.math.max
 import kotlin.math.min
 
@@ -88,6 +89,11 @@ import kotlin.math.min
  * 导出书籍服务
  */
 class ExportBookService : BaseService() {
+
+    private enum class ExportNotificationState {
+        RUNNING,
+        FINISHED
+    }
 
     companion object {
         val exportProgress = ConcurrentHashMap<String, Int>()
@@ -155,7 +161,7 @@ class ExportBookService : BaseService() {
         startForeground(NotificationId.ExportBookService, notification.build())
     }
 
-    private fun upExportNotification(finish: Boolean = false) {
+    private fun upExportNotification(state: ExportNotificationState) {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
@@ -165,7 +171,7 @@ class ExportBookService : BaseService() {
             .setDeleteIntent(servicePendingIntent<ExportBookService>(IntentAction.stop))
             .setGroup(groupKey)
             .setOnlyAlertOnce(true)
-        if (!finish) {
+        if (state == ExportNotificationState.RUNNING) {
             notification.setOngoing(true)
             notification.addAction(
                 R.drawable.ic_stop_black_24dp,
@@ -184,7 +190,7 @@ class ExportBookService : BaseService() {
             while (isActive) {
                 val (bookUrl, exportConfig) = waitExportBooks.entries.firstOrNull() ?: let {
                     notificationContentText = "导出完成"
-                    upExportNotification(true)
+                    upExportNotification(ExportNotificationState.FINISHED)
                     stopSelf()
                     return@launch
                 }
@@ -199,7 +205,7 @@ class ExportBookService : BaseService() {
                         book.name,
                         waitExportBooks.size
                     )
-                    upExportNotification()
+                    upExportNotification(ExportNotificationState.RUNNING)
                     when (exportConfig.type) {
                         "epub" -> {
                             if (exportConfig.epubScope.isNullOrBlank()) {
@@ -247,6 +253,15 @@ class ExportBookService : BaseService() {
         val index: Int,
         val src: String
     )
+
+    private fun getChapterContentForExport(book: Book, chapter: BookChapter): String? {
+        val content = BookHelp.getContent(book, chapter)
+        return when {
+            content != null -> content
+            chapter.isVolume -> ""
+            else -> null
+        }
+    }
 
     private suspend fun exportTxt(path: String, book: Book) {
         exportMsg.remove(book.bookUrl)
@@ -359,11 +374,9 @@ class ExportBookService : BaseService() {
             if (y + layout.height > contentBottom) {
                 startPage()
             }
-            currentPage!!.canvas.run {
-                save()
+            currentPage!!.canvas.withSave {
                 translate(margin, y)
                 layout.draw(this)
-                restore()
             }
             y += layout.height + spacing
         }
@@ -414,12 +427,11 @@ class ExportBookService : BaseService() {
                 titleReplaceRules,
                 useReplace = useReplace
             )
+            val rawContent = getChapterContentForExport(book, chapterForExport)
+                ?: return@forEachIndexed
             if (!AppConfig.exportNoChapterName) {
                 drawTextBlock(chapterTitle.replace("\uD83D\uDD12", ""), chapterPaint, 18f)
             }
-
-            val rawContent = BookHelp.getContent(book, chapterForExport)
-                ?: if (chapterForExport.isVolume) "" else "null"
             val imagePaths = linkedSetOf<String>()
             val imageMatcher = AppPattern.imgPattern.matcher(rawContent)
             while (imageMatcher.find()) {
@@ -470,8 +482,8 @@ class ExportBookService : BaseService() {
         BitmapFactory.decodeFile(path, options)
         if (options.outWidth <= 0 || options.outHeight <= 0) return null
         var sampleSize = 1
-        var halfWidth = options.outWidth / 2
-        var halfHeight = options.outHeight / 2
+        val halfWidth = options.outWidth / 2
+        val halfHeight = options.outHeight / 2
         while ((halfWidth / sampleSize) >= reqWidth && (halfHeight / sampleSize) >= reqHeight) {
             sampleSize *= 2
         }
@@ -522,13 +534,13 @@ class ExportBookService : BaseService() {
         contentProcessor: ContentProcessor,
         useReplace: Boolean
     ): Pair<String, ArrayList<SrcData>?> {
-        val content = BookHelp.getContent(book, chapter)
+        val content = getChapterContentForExport(book, chapter) ?: return Pair("", null)
         val content1 = contentProcessor
             .getContent(
                 book,
                 // 不导出vip标识
                 chapter.apply { isVip = false },
-                content ?: if (chapter.isVolume) "" else "null",
+                content,
                 includeTitle = !AppConfig.exportNoChapterName,
                 useReplace = useReplace,
                 chineseConvert = false,
@@ -537,7 +549,7 @@ class ExportBookService : BaseService() {
         if (AppConfig.exportPictureFile) {
             //txt导出图片文件
             val srcList = arrayListOf<SrcData>()
-            content?.split("\n")?.forEachIndexed { index, text ->
+            content.split("\n").forEachIndexed { index, text ->
                 val matcher = AppPattern.imgPattern.matcher(text)
                 while (matcher.find()) {
                     matcher.group(1)?.let {
@@ -742,16 +754,17 @@ class ExportBookService : BaseService() {
         } else {
             1
         }
-        var parentSection: TOCReference? = null
+        val sectionAppender = EpubSectionAppender(epubBook)
         flow {
             appDb.bookChapterDao.getChapterList(book.bookUrl).forEach { chapter ->
                 emit(chapter)
             }
         }.mapAsyncIndexed(threads) { index, chapter ->
-            val content = BookHelp.getContent(book, chapter)
+            val content = getChapterContentForExport(book, chapter)
+                ?: return@mapAsyncIndexed null
             val (contentFix, resources) = fixPic(
                 book,
-                content ?: if (chapter.isVolume) "" else "null",
+                content,
                 chapter
             )
             // 不导出vip标识
@@ -782,17 +795,14 @@ class ExportBookService : BaseService() {
             )
             ExportChapter(title, chapterResource, resources, chapter)
         }.collectIndexed { index, exportChapter ->
+            if (exportChapter == null) {
+                return@collectIndexed
+            }
             postEvent(EventBus.EXPORT_BOOK, book.bookUrl)
             exportProgress[book.bookUrl] = index
             val (title, chapterResource, resources, chapter) = exportChapter
             epubBook.resources.addAll(resources)
-            if (chapter.isVolume) {
-                parentSection = epubBook.addSection(title, chapterResource)
-            } else if (parentSection == null) {
-                epubBook.addSection(title, chapterResource)
-            } else {
-                epubBook.addSection(parentSection, title, chapterResource)
-            }
+            sectionAppender.add(chapter, title, chapterResource)
         }
     }
 
@@ -802,6 +812,25 @@ class ExportBookService : BaseService() {
         val resources: ArrayList<Resource>,
         val chapter: BookChapter
     )
+
+    private class EpubSectionAppender(
+        private val epubBook: EpubBook
+    ) {
+        private var parentSection: TOCReference? = null
+
+        fun add(chapter: BookChapter, title: String, chapterResource: Resource) {
+            if (chapter.isVolume) {
+                parentSection = epubBook.addSection(title, chapterResource)
+                return
+            }
+            val parent = parentSection
+            if (parent == null) {
+                epubBook.addSection(title, chapterResource)
+            } else {
+                epubBook.addSection(parent, title, chapterResource)
+            }
+        }
+    }
 
     private fun fixPic(
         book: Book,
@@ -876,7 +905,7 @@ class ExportBookService : BaseService() {
 
             val fileDoc = FileDoc.fromDir(path)
 
-            val (contentModel, epubList) = createEpubs(book, fileDoc)
+            val (contentModel, epubList) = createEpubBooks(book, fileDoc)
             var progressBar = 0.0
             epubList.forEachIndexed { index, ep ->
                 val (filename, epubBook) = ep
@@ -941,12 +970,12 @@ class ExportBookService : BaseService() {
                 min(scope.size, (epubBookIndex + 1) * size)
             )
             chapterList.forEachIndexed { index, chapter ->
-                coroutineContext.ensureActive()
+                currentCoroutineContext().ensureActive()
                 updateProgress(chapterList, index)
-                BookHelp.getContent(book, chapter).let { content ->
+                getChapterContentForExport(book, chapter)?.let { content ->
                     val (contentFix, resources) = fixPic(
                         book,
-                        content ?: if (chapter.isVolume) "" else "null",
+                        content,
                         chapter
                     )
                     epubBook.resources.addAll(resources)
@@ -990,7 +1019,7 @@ class ExportBookService : BaseService() {
          *
          * @return <内容模板字符串, <epub文件名, epub对象>>
          */
-        private fun createEpubs(
+        private fun createEpubBooks(
             book: Book,
             fileDoc: FileDoc
         ): Pair<String, List<Pair<String, EpubBook>>> {
@@ -1064,7 +1093,6 @@ class ExportBookService : BaseService() {
          * @return 范围
          *
          * @since 2023/5/22
-         * @author Discut
          */
         private fun parseScope(scope: String): Set<Int> {
             val split = scope.split(",")
