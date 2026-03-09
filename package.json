@@ -9,7 +9,8 @@
     "@codemirror/search": "^6.6.0",
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.14",
-    "cz-conventional-changelog": "^3.1.0"
+    "cz-conventional-changelog": "^3.1.0",
+    "esbuild": "^0.27.3"
   },
   "config": {
     "commitizen": {
@@ -19,7 +20,10 @@
   "description": "[![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:codemirror": "esbuild app/src/main/assets/web/code-editor/codemirror.entry.js --bundle --format=iife --global-name=CodeMirrorBundle --target=es2019 --minify --outfile=app/src/main/assets/web/code-editor/codemirror.bundle.js",
+    "build:prettier": "esbuild node_modules/prettier/standalone.js --bundle --format=iife --global-name=prettier --target=es2019 --minify --outfile=app/src/main/assets/web/code-editor/standalone.min.js && esbuild node_modules/prettier/plugins/babel.js --bundle --format=iife --global-name=prettierPlugins.babel --target=es2019 --minify --outfile=app/src/main/assets/web/code-editor/babel.js && esbuild node_modules/prettier/plugins/estree.js --bundle --format=iife --global-name=prettierPlugins.estree --target=es2019 --minify --outfile=app/src/main/assets/web/code-editor/estree.js",
+    "build": "npm run build:codemirror && npm run build:prettier"
   },
   "repository": {
     "type": "git",

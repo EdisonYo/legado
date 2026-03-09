@@ -477,6 +477,11 @@
           toast.textContent = text;
           toast.classList.add("show");
         }
+        if (window.Android && typeof window.Android.onEditorBootError === "function") {
+          try {
+            window.Android.onEditorBootError(text);
+          } catch (_) {}
+        }
       }
       window.__LEGADO_BOOT_ERROR = bootError;
       window.__LEGADO_EDITOR_BOOTED = false;
@@ -595,6 +600,9 @@
   </script>
   <script>
     (function () {
+      function errMsg(e) {
+        return e && e.message ? e.message : String(e);
+      }
       try {
         const $ = (id) => document.getElementById(id);
         const bootError = window.__LEGADO_BOOT_ERROR || function () { };
@@ -728,10 +736,7 @@
                 themeMode = data.themeMode;
             }
           } catch (e) {
-            appendLog(
-              "error",
-              "设置读取失败: " + (e && e.message ? e.message : e),
-            );
+            appendLog("error", "设置读取失败: " + errMsg(e));
           }
         }
 
@@ -750,10 +755,7 @@
             };
             window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
           } catch (e) {
-            appendLog(
-              "error",
-              "设置保存失败: " + (e && e.message ? e.message : e),
-            );
+            appendLog("error", "设置保存失败: " + errMsg(e));
           }
         }
 
@@ -762,6 +764,7 @@
         const fontComp = new Compartment();
         const indentComp = new Compartment();
         const autoIndentComp = new Compartment();
+        const deferredComp = new Compartment();
         const mediaDark = window.matchMedia
           ? window.matchMedia("(prefers-color-scheme: dark)")
           : null;
@@ -1331,29 +1334,20 @@
           return completionRegex.test(token[0]);
         }
 
-        function buildExtensions() {
+        function buildCriticalExtensions() {
           const tabKey = {
             key: "Tab",
             run: insertTab,
             shift: indentLess || undefined,
           };
           const enterKey = { key: "Enter", run: insertNewlineClamped };
-          const closeKeymap = Array.isArray(closeBracketsKeymap)
-            ? closeBracketsKeymap
-            : closeBracketsKeymap
-              ? [closeBracketsKeymap]
-              : [];
           const exts = [];
-          if (typeof history === "function") exts.push(history());
           if (keymap && typeof keymap.of === "function") {
-            const km = [tabKey, ...closeKeymap];
+            const km = [tabKey];
             if (enterKey) km.unshift(enterKey);
             exts.push(keymap.of(km));
           }
           if (typeof lineNumbers === "function") exts.push(lineNumbers());
-          if (typeof highlightActiveLineGutter === "function")
-            exts.push(highlightActiveLineGutter());
-          if (typeof foldGutter === "function") exts.push(foldGutter());
           if (wrapComp && EditorView && EditorView.lineWrapping)
             exts.push(wrapComp.of(makeWrapExtensions(isWrap)));
           if (
@@ -1371,14 +1365,34 @@
             );
           }
           if (typeof javascript === "function") exts.push(javascript());
-          if (typeof closeBrackets === "function") exts.push(closeBrackets());
-          if (typeof bracketMatching === "function")
-            exts.push(bracketMatching());
           if (typeof syntaxHighlighting === "function") {
             exts.push(
               syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
             );
           }
+          if (themeComp) exts.push(themeComp.of(makeTheme()));
+          if (fontComp) exts.push(fontComp.of(makeFontTheme()));
+          exts.push(deferredComp.of([]));
+          return exts;
+        }
+
+        function buildDeferredExtensions() {
+          const closeKeymap = Array.isArray(closeBracketsKeymap)
+            ? closeBracketsKeymap
+            : closeBracketsKeymap
+              ? [closeBracketsKeymap]
+              : [];
+          const exts = [];
+          if (typeof history === "function") exts.push(history());
+          if (keymap && typeof keymap.of === "function" && closeKeymap.length) {
+            exts.push(keymap.of(closeKeymap));
+          }
+          if (typeof highlightActiveLineGutter === "function")
+            exts.push(highlightActiveLineGutter());
+          if (typeof foldGutter === "function") exts.push(foldGutter());
+          if (typeof closeBrackets === "function") exts.push(closeBrackets());
+          if (typeof bracketMatching === "function")
+            exts.push(bracketMatching());
           if (typeof highlightSelectionMatches === "function")
             exts.push(highlightSelectionMatches());
           if (typeof closeCompletion === "function") {
@@ -1413,8 +1427,6 @@
               scheduleSyntaxCheck();
             }),
           );
-          if (themeComp) exts.push(themeComp.of(makeTheme()));
-          if (fontComp) exts.push(fontComp.of(makeFontTheme()));
           return exts;
         }
 
@@ -1425,7 +1437,7 @@
           view = new EditorView({
             state: EditorState.create({
               doc: "",
-              extensions: buildExtensions(),
+              extensions: buildCriticalExtensions(),
             }),
             parent: dom.editorHost,
           });
@@ -1449,11 +1461,17 @@
           applyTheme(themeMode);
           dom.wrapBtn.classList.toggle("active", isWrap);
         } catch (e) {
-          appendLog("error", e && e.message ? e.message : e);
-          bootError("编辑器初始化失败: " + (e && e.message ? e.message : e));
+          appendLog("error", errMsg(e));
+          bootError("编辑器初始化失败: " + errMsg(e));
           return;
         }
         window.__LEGADO_EDITOR_BOOTED = true;
+
+        requestAnimationFrame(function() {
+          view.dispatch({
+            effects: deferredComp.reconfigure(buildDeferredExtensions()),
+          });
+        });
 
         const syncAutoTheme = () => {
           if (themeMode !== "auto") return;
@@ -1498,6 +1516,7 @@
               type: "prefix",
               prefix: "@js:",
               body: jsPrefixMatch[1] || "",
+              reassemble: function(b) { return this.prefix + "\n" + b; },
             };
           }
           const tagMatch = trimmed.match(/^<js>\s*([\s\S]*?)\s*<\/js>$/i);
@@ -1507,6 +1526,7 @@
               open: "<js>",
               close: "</js>",
               body: tagMatch[1],
+              reassemble: function(b) { return this.open + "\n" + b + "\n" + this.close; },
             };
           }
           const tagTailMatch = trimmed.match(
@@ -1519,11 +1539,16 @@
               close: "</js>",
               body: tagTailMatch[1],
               tail: tagTailMatch[2],
+              reassemble: function(b) { return this.open + "\n" + b + "\n" + this.close + this.tail; },
             };
           }
           const braceMatch = trimmed.match(/^\{\{\s*([\s\S]*?)\s*\}\}$/);
           if (braceMatch) {
-            return { type: "moustache", body: braceMatch[1] };
+            return {
+              type: "moustache",
+              body: braceMatch[1],
+              reassemble: function(b) { return "{{\n" + b + "\n}}"; },
+            };
           }
           const mixedJsMatch = raw.match(/^([\s\S]*?\n)@js:\s*[\r\n]?([\s\S]*)$/);
           if (mixedJsMatch) {
@@ -1532,6 +1557,7 @@
               header: mixedJsMatch[1],
               prefix: "@js:",
               body: mixedJsMatch[2] || "",
+              reassemble: function(b) { return this.header + this.prefix + "\n" + b; },
             };
           }
           const mixedTagMatch = trimmed.match(
@@ -1544,6 +1570,7 @@
               open: "<js>",
               close: "</js>",
               body: mixedTagMatch[2],
+              reassemble: function(b) { return this.header + this.open + "\n" + b + "\n" + this.close; },
             };
           }
           const mixedTagTailMatch = trimmed.match(
@@ -1557,6 +1584,7 @@
               close: "</js>",
               body: mixedTagTailMatch[2],
               tail: mixedTagTailMatch[3],
+              reassemble: function(b) { return this.header + this.open + "\n" + b + "\n" + this.close + this.tail; },
             };
           }
           return null;
@@ -1575,7 +1603,7 @@
           return prettierPluginsCache;
         }
 
-        async function ensurePrettierReady(showLoadingToast) {
+        async function preparePrettier(showLoadingToast) {
           if (window.prettier && getPrettierPlugins()) return true;
           if (typeof window.__ensurePrettierReady !== "function") return false;
           if (showLoadingToast) showToast("加载格式化引擎...");
@@ -1584,7 +1612,7 @@
             prettierPluginsCache = null;
             return !!(window.prettier && getPrettierPlugins());
           } catch (e) {
-            appendLog("error", e && e.message ? e.message : e);
+            appendLog("error", errMsg(e));
             if (showLoadingToast) showToast("格式化引擎加载失败");
             return false;
           }
@@ -1617,7 +1645,7 @@
           const raw = getCode();
           const text = raw.trim();
           if (!text) return;
-          if (!(await ensurePrettierReady(true))) {
+          if (!(await preparePrettier(true))) {
             return;
           }
           showToast("格式化中...");
@@ -1627,42 +1655,7 @@
             let formattedBody = "";
             if (wrapper) {
               formattedBody = await formatWithPrettier(wrapper.body, "babel");
-              if (wrapper.type === "prefix") {
-                formattedBody = wrapper.prefix + "\n" + formattedBody;
-              } else if (wrapper.type === "tag") {
-                formattedBody =
-                  wrapper.open + "\n" + formattedBody + "\n" + wrapper.close;
-              } else if (wrapper.type === "tag-tail") {
-                formattedBody =
-                  wrapper.open +
-                  "\n" +
-                  formattedBody +
-                  "\n" +
-                  wrapper.close +
-                  wrapper.tail;
-              } else if (wrapper.type === "moustache") {
-                formattedBody = "{{\n" + formattedBody + "\n}}";
-              } else if (wrapper.type === "mixed") {
-                formattedBody =
-                  wrapper.header + wrapper.prefix + "\n" + formattedBody;
-              } else if (wrapper.type === "mixed-tag") {
-                formattedBody =
-                  wrapper.header +
-                  wrapper.open +
-                  "\n" +
-                  formattedBody +
-                  "\n" +
-                  wrapper.close;
-              } else if (wrapper.type === "mixed-tag-tail") {
-                formattedBody =
-                  wrapper.header +
-                  wrapper.open +
-                  "\n" +
-                  formattedBody +
-                  "\n" +
-                  wrapper.close +
-                  wrapper.tail;
-              }
+              formattedBody = wrapper.reassemble(formattedBody);
             } else {
               if (/^[\[{]/.test(text)) {
                 try {
@@ -1682,7 +1675,7 @@
             resetDoc(formattedBody);
             showToast("格式化完成");
           } catch (e) {
-            appendLog("error", e && e.message ? e.message : e);
+            appendLog("error", errMsg(e));
             showToast("格式化失败");
           }
         }
@@ -1887,10 +1880,7 @@
                 : curlToAnalyzeUrl(input);
             if (dom.curlOutput) dom.curlOutput.value = output;
           } catch (e) {
-            appendLog(
-              "error",
-              "转换失败: " + (e && e.message ? e.message : e),
-            );
+            appendLog("error", "转换失败: " + errMsg(e));
             showToast("转换失败");
           }
         });
@@ -1904,10 +1894,7 @@
             await copyToClipboard(text);
             showToast("已复制");
           } catch (e) {
-            appendLog(
-              "error",
-              "复制失败: " + (e && e.message ? e.message : e),
-            );
+            appendLog("error", "复制失败: " + errMsg(e));
             showToast("复制失败");
           }
         });
@@ -1934,7 +1921,7 @@
             await copyToClipboard(text);
             showToast("日志已复制");
           } catch (e) {
-            appendLog("error", "复制失败: " + (e && e.message ? e.message : e));
+            appendLog("error", "复制失败: " + errMsg(e));
             showToast("复制失败");
           }
         });
@@ -2009,7 +1996,7 @@
         function showSyntaxOk() {
           dom.syntaxStatus.style.display = "block";
           dom.syntaxStatus.className = "ok";
-          dom.syntaxStatus.textContent = "\u2713 \u8BED\u6CD5\u6B63\u786E";
+          dom.syntaxStatus.textContent = "✓ 语法正确";
           dom.syntaxStatus.onclick = null;
         }
 
@@ -2022,8 +2009,8 @@
             .replace(/\s*\(\d+:\d+\)\s*$/, "")
             .trim();
           dom.syntaxStatus.textContent = errorLine
-            ? "\u2717 \u7B2C " + errorLine + " \u884C: " + display
-            : "\u2717 " + display;
+            ? "✗ 第 " + errorLine + " 行: " + display
+            : "✗ " + display;
           if (errorLine && view) {
             dom.syntaxStatus.onclick = () => {
               const line = view.state.doc.line(
@@ -2076,7 +2063,7 @@
             if (version === lintVersion) showSyntaxOk();
           } catch (e) {
             if (version !== lintVersion) return;
-            const msg = e && e.message ? e.message : String(e);
+            const msg = errMsg(e);
             const m = msg.match(/\((\d+):(\d+)\)/);
             const errorLine = m ? parseInt(m[1], 10) + lineOffset : null;
             const errorCol = m ? parseInt(m[2], 10) : null;
@@ -2137,9 +2124,10 @@
           return getCode();
         };
 
-        // window.addEventListener("resize", () => {
-        //   if (fontSize === "auto") applyFontSize("auto");
-        // });
+        if (window.Android && typeof window.Android.onEditorReady === "function") {
+          window.Android.onEditorReady();
+        }
+
         const __err = console.error.bind(console);
         console.error = function (...args) {
           const safe = args
@@ -2156,7 +2144,7 @@
           __err(...args);
         };
       } catch (e) {
-        const msg = e && e.message ? e.message : e;
+        const msg = errMsg(e);
         if (window.__LEGADO_BOOT_ERROR) {
           window.__LEGADO_BOOT_ERROR("编辑器初始化失败: " + msg);
         }

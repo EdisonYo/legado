@@ -43,6 +43,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
+import android.webkit.WebView
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
 import io.legado.app.help.http.ObsoleteUrlFactory
@@ -84,6 +85,10 @@ class App : Application() {
             LogUtils.init(this@App)
             LogUtils.d("App", "onCreate")
             LogUtils.logDeviceInfo()
+            //预热WebView引擎，消除首次打开编辑器的冷启动延迟
+            launch(kotlinx.coroutines.Dispatchers.Main) {
+                try { WebView(this@App).destroy() } catch (_: Exception) {}
+            }
             //预下载Cronet so
             Cronet.preDownload()
             createNotificationChannels()

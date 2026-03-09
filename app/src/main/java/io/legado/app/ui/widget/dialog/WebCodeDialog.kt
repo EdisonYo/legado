@@ -34,7 +34,10 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
 
     private val binding by viewBinding(DialogWebCodeViewBinding::bind)
     private var pendingCode: String = ""
-    private var pageReady = false
+    private var encodedCode: String = ""
+    private var editorReady = false
+    private var bootFailed = false
+    private var initialCodeSent = false
     private var pendingClose = false
     private var confirmShown = false
 
@@ -65,10 +68,13 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
         binding.toolBar.menu.applyTint(requireContext())
         val saveItem = binding.toolBar.menu.findItem(R.id.menu_save)
         saveItem?.isEnabled = false
+        editorReady = false
+        bootFailed = false
+        initialCodeSent = false
         binding.toolBar.setOnMenuItemClickListener {
             when (it.itemId) {
                 R.id.menu_save -> {
-                    if (pageReady) {
+                    if (editorReady) {
                         binding.webView.evaluateJavascript("window.__save && window.__save();", null)
                     }
                     return@setOnMenuItemClickListener true
@@ -83,28 +89,41 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             textZoom = 100
         }
+        binding.webView.setBackgroundColor(Color.TRANSPARENT)
         binding.webView.addJavascriptInterface(JsBridge(), "Android")
         pendingCode = arguments?.getString("code").orEmpty()
-        val encoded = Base64.encodeToString(
+        encodedCode = Base64.encodeToString(
             pendingCode.orEmpty().toByteArray(Charsets.UTF_8),
             Base64.NO_WRAP
         )
+        updateEditorUiState()
         binding.webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
-                pageReady = true
-                saveItem?.isEnabled = true
-                view?.evaluateJavascript(
-                    "window.setCodeFromAndroid && window.setCodeFromAndroid('$encoded');",
-                    null
-                )
+                if (editorReady || bootFailed) {
+                    updateEditorUiState()
+                }
             }
         }
         binding.webView.loadUrl("file:///android_asset/web/code-editor/editor.html")
     }
 
+    private fun updateEditorUiState() {
+        binding.toolBar.menu.findItem(R.id.menu_save)?.isEnabled = editorReady && !bootFailed
+        binding.loadingProgress.visibility = if (editorReady || bootFailed) View.GONE else View.VISIBLE
+    }
+
+    private fun sendInitialCodeToEditor() {
+        if (!editorReady || bootFailed || initialCodeSent) return
+        initialCodeSent = true
+        binding.webView.evaluateJavascript(
+            "window.setCodeFromAndroid && window.setCodeFromAndroid('" + encodedCode + "');",
+            null
+        )
+    }
+
     private fun requestClose() {
         if (pendingClose || confirmShown) return
-        if (!pageReady) {
+        if (!editorReady) {
             dismissAllowingStateLoss()
             return
         }
@@ -154,6 +173,25 @@ class WebCodeDialog() : BaseDialogFragment(R.layout.dialog_web_code_view) {
     }
 
     private inner class JsBridge {
+        @JavascriptInterface
+        fun onEditorReady() {
+            binding.root.post {
+                bootFailed = false
+                editorReady = true
+                updateEditorUiState()
+                sendInitialCodeToEditor()
+            }
+        }
+
+        @JavascriptInterface
+        fun onEditorBootError(message: String?) {
+            binding.root.post {
+                if (editorReady) return@post
+                bootFailed = true
+                updateEditorUiState()
+            }
+        }
+
         @JavascriptInterface
         fun save(text: String) {
             binding.root.post {
