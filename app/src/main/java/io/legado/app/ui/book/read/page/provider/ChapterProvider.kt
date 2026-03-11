@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read.page.provider
 
+import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Paint.FontMetrics
 import android.graphics.RectF
@@ -9,6 +10,7 @@ import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import androidx.collection.LruCache
 import androidx.core.os.postDelayed
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -28,6 +30,7 @@ import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.RealPathUtil
 import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fastSum
@@ -52,6 +55,8 @@ object ChapterProvider {
 
     //用于评论按钮的替换
     const val reviewChar = "▨"
+    private const val reviewIconPlaceholder = "{{count}}"
+    private const val reviewIconCacheMaxBytes = 1024 * 1024
 
     const val indentChar = "　"
 
@@ -141,6 +146,39 @@ object ChapterProvider {
 
     @JvmStatic
     var reviewPaint: TextPaint = TextPaint()
+
+
+    private data class ReviewIconCacheKey(
+        val templateHash: Int,
+        val templateLength: Int,
+        val countText: String,
+        val widthPx: Int,
+        val heightPx: Int,
+    )
+
+    private val reviewIconBitmapCache = object :
+        LruCache<ReviewIconCacheKey, Bitmap>(reviewIconCacheMaxBytes) {
+
+        override fun sizeOf(key: ReviewIconCacheKey, value: Bitmap): Int {
+            return value.byteCount
+        }
+
+        override fun entryRemoved(
+            evicted: Boolean,
+            key: ReviewIconCacheKey,
+            oldValue: Bitmap,
+            newValue: Bitmap?,
+        ) {
+            if (oldValue !== newValue && !oldValue.isRecycled) {
+                oldValue.recycle()
+            }
+        }
+    }
+
+    private var lastReviewIconTemplate: String? = null
+    private var invalidReviewIconTemplate: String? = null
+    private var lastReviewIconAspectTemplate: String? = null
+    private var reviewIconAspectRatio: Float? = null
 
     @JvmStatic
     var doublePage = false
@@ -930,8 +968,12 @@ object ChapterProvider {
     }
 
     /**
-     * provider 变化后，及时同步当前缓存章节里的段评列，避免旧图标残留。
+     * provider 或样式变化后，及时同步当前缓存章节里的段评列，避免旧图标残留或错位。
      */
+    fun refreshReviewColumnsForStyleChange() {
+        refreshReviewColumns()
+    }
+
     private fun refreshReviewColumns() {
         refreshReviewColumns(ReadBook.prevTextChapter)
         refreshReviewColumns(ReadBook.curTextChapter)
@@ -967,6 +1009,9 @@ object ChapterProvider {
                             hasReviewColumn = true
                             if (column.count != count) {
                                 column.count = count
+                                changed = true
+                            }
+                            if (updateReviewColumnLayout(column, line)) {
                                 changed = true
                             }
                         }
@@ -1024,20 +1069,113 @@ object ChapterProvider {
         if (textLine.columns.any { it is ReviewColumn }) return
         val count = getReviewCount(textLine.paragraphNum, textLine.isTitle, titleOffset, chapterIndex)
         if (count <= 0) return
+        val reviewColumn = ReviewColumn(start = 0f, end = 0f, count = count)
+        updateReviewColumnLayout(reviewColumn, textLine)
+        textLine.addColumn(reviewColumn)
+    }
+
+    private fun getReviewScaleFactor(): Float {
+        return ReadBookConfig.reviewIconScale.coerceIn(50, 200) / 100f
+    }
+
+    private fun getReviewColumnRange(textLine: TextLine): Pair<Float, Float> {
         val width = getReviewWidth(textLine.isTitle)
         val maxEnd = if (doublePage && textLine.isLeftLine) {
             (viewWidth / 2 - paddingRight).toFloat()
         } else {
             visibleRight.toFloat()
         }
-        val start = kotlin.math.min(textLine.lineEnd, maxEnd - width)
-        val end = start + width
-        textLine.addColumn(ReviewColumn(start = start, end = end, count = count))
+        val textEnd = textLine.columns.lastOrNull { it !is ReviewColumn }?.end ?: textLine.lineEnd
+        val start = kotlin.math.min(textEnd, maxEnd - width)
+        return start to start + width
+    }
+
+    private fun updateReviewColumnLayout(reviewColumn: ReviewColumn, textLine: TextLine): Boolean {
+        val (start, end) = getReviewColumnRange(textLine)
+        if (reviewColumn.start == start && reviewColumn.end == end) {
+            return false
+        }
+        reviewColumn.start = start
+        reviewColumn.end = end
+        return true
     }
 
     fun getReviewWidth(isTitle: Boolean): Float {
         val base = if (isTitle) titlePaint.textSize else contentPaint.textSize
-        return base * 0.9f
+        val defaultWidth = base * 0.9f * getReviewScaleFactor()
+        val aspectRatio = getReviewIconAspectRatio() ?: return defaultWidth
+        return getReviewHeight(isTitle) * 0.9f * aspectRatio
+    }
+
+    fun getReviewHeight(isTitle: Boolean): Float {
+        val base = if (isTitle) titlePaint.textSize else contentPaint.textSize
+        return base * getReviewScaleFactor()
+    }
+
+    fun getReviewCountText(count: Int): String {
+        return if (count > 999) "999" else count.toString()
+    }
+
+    fun clearReviewIconCache() {
+        lastReviewIconTemplate = null
+        invalidReviewIconTemplate = null
+        lastReviewIconAspectTemplate = null
+        reviewIconAspectRatio = null
+        reviewIconBitmapCache.evictAll()
+    }
+
+    private fun getReviewIconAspectRatio(): Float? {
+        val template = ReadBookConfig.reviewIconSvg.trim()
+        if (template.isBlank()) {
+            lastReviewIconAspectTemplate = null
+            reviewIconAspectRatio = null
+            return null
+        }
+        if (lastReviewIconAspectTemplate != template) {
+            lastReviewIconAspectTemplate = template
+            reviewIconAspectRatio = SvgUtils
+                .getAspectRatioFromSvgText(template.replace(reviewIconPlaceholder, "88"))
+                ?.takeIf { it.isFinite() && it > 0f }
+        }
+        return reviewIconAspectRatio
+    }
+
+    fun getReviewIconBitmap(count: Int, widthPx: Int, heightPx: Int): Bitmap? {
+        if (count <= 0 || widthPx <= 0 || heightPx <= 0) return null
+        val template = ReadBookConfig.reviewIconSvg.trim()
+        val countText = getReviewCountText(count)
+        if (template.isBlank()) {
+            if (lastReviewIconTemplate != null) {
+                clearReviewIconCache()
+            }
+            return null
+        }
+        if (lastReviewIconTemplate != template) {
+            reviewIconBitmapCache.evictAll()
+            invalidReviewIconTemplate = null
+            lastReviewIconTemplate = template
+        }
+        if (invalidReviewIconTemplate == template) return null
+        val cacheKey = ReviewIconCacheKey(
+            templateHash = template.hashCode(),
+            templateLength = template.length,
+            countText = countText,
+            widthPx = widthPx,
+            heightPx = heightPx,
+        )
+        reviewIconBitmapCache[cacheKey]?.let { cached ->
+            if (!cached.isRecycled) return cached
+            reviewIconBitmapCache.remove(cacheKey)
+        }
+        val svgText = template.replace(reviewIconPlaceholder, countText)
+        val bitmap = SvgUtils.createBitmapFromSvgText(svgText, widthPx, heightPx)
+        if (bitmap == null) {
+            invalidReviewIconTemplate = template
+            return null
+        }
+        invalidReviewIconTemplate = null
+        reviewIconBitmapCache.put(cacheKey, bitmap)
+        return bitmap
     }
 
     private fun getTypeface(fontPath: String): Typeface? {

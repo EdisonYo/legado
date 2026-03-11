@@ -333,6 +333,17 @@ object ReadBookConfig {
             config.underline = value
         }
 
+    var reviewIconSvg: String
+        get() = config.reviewIconSvg
+        set(value) {
+            config.reviewIconSvg = value
+        }
+
+    var reviewIconScale: Int
+        get() = config.reviewIconScale
+        set(value) {
+            config.reviewIconScale = value.coerceIn(50, 200)
+        }
     var paddingBottom: Int
         get() = config.paddingBottom
         set(value) {
@@ -430,6 +441,8 @@ object ReadBookConfig {
             exportConfig.titleSize = shareConfig.titleSize
             exportConfig.titleTopSpacing = shareConfig.titleTopSpacing
             exportConfig.titleBottomSpacing = shareConfig.titleBottomSpacing
+            exportConfig.reviewIconSvg = shareConfig.reviewIconSvg
+            exportConfig.reviewIconScale = shareConfig.reviewIconScale
             exportConfig.paddingBottom = shareConfig.paddingBottom
             exportConfig.paddingLeft = shareConfig.paddingLeft
             exportConfig.paddingRight = shareConfig.paddingRight
@@ -557,6 +570,8 @@ object ReadBookConfig {
         var titleBottomSpacing: Int = 0,
         var paragraphIndent: String = "　　",//段落缩进
         var underline: Boolean = false, //下划线
+        var reviewIconSvg: String = "", //段评图标SVG
+        var reviewIconScale: Int = 100, //段评图标大小百分比
         var paddingBottom: Int = 6,
         var paddingLeft: Int = 16,
         var paddingRight: Int = 16,

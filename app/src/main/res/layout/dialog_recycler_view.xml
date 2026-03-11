@@ -12,7 +12,34 @@
         android:layout_height="wrap_content"
         android:theme="?attr/actionBarStyle"
         app:popupTheme="@style/AppTheme.PopupOverlay"
-        app:titleTextAppearance="@style/ToolbarTitle" />
+        app:titleTextAppearance="@style/ToolbarTitle">
+
+        <LinearLayout
+            android:id="@+id/drag_handle"
+            android:layout_width="72dp"
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <View
+                android:layout_width="18dp"
+                android:layout_height="3dp"
+                android:background="@drawable/bg_review_drag_handle" />
+
+            <View
+                android:layout_width="18dp"
+                android:layout_height="3dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/bg_review_drag_handle" />
+
+        </LinearLayout>
+
+    </androidx.appcompat.widget.Toolbar>
 
     <FrameLayout
         android:layout_width="match_parent"

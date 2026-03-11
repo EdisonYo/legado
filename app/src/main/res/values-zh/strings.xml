@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <!--App-->
     <string name="app_name">阅读T</string>
     <string name="app_name_a">阅读T·A</string>
@@ -1386,10 +1386,10 @@ Cron 使用 5 个字段：**分 时 日 月 周**
     <string name="review_collapse_replies">收起回复</string>
     <string name="review_play_audio">播放语音</string>
     <string name="review_pause_audio">暂停语音</string>
+    <string name="review_icon_svg_title">段评图标SVG</string>
+    <string name="review_icon_svg_hint">&lt;svg ...&gt; 使用 {{count}} 作为数量占位符</string>
+    <string name="review_icon_svg_invalid">SVG 无效，请检查语法和尺寸定义</string>
+    <string name="review_icon_size_title">图标大小</string>
+    <string name="review_icon_size_hint">输入 50-200，100 为默认大小</string>
+    <string name="review_icon_size_invalid">请输入 50-200 之间的整数</string>
 </resources>
-
-
-
-
-
-

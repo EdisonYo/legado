@@ -5,11 +5,13 @@ import android.content.DialogInterface
 import android.graphics.PorterDuff
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.SeekBar
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.TooltipCompat
 import androidx.core.graphics.toColorInt
 import androidx.core.view.isGone
@@ -34,6 +36,7 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.seekbar.SeekBarChangeListener
 import io.legado.app.utils.ColorUtils
@@ -41,6 +44,7 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFileReplace
@@ -207,6 +211,62 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         binding.swUnderline.setOnCheckedChangeListener { _, isChecked ->
             underline = isChecked
             postEvent(EventBus.UP_CONFIG, arrayListOf(6, 9, 11))
+        }
+        binding.tvReviewIconSvg.setOnClickListener {
+            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = getString(R.string.review_icon_svg_hint)
+                editView.setSingleLine(false)
+                editView.maxLines = 8
+                editView.setText(ReadBookConfig.reviewIconSvg)
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            val dialog = alert(R.string.review_icon_svg_title) {
+                customView { alertBinding.root }
+                okButton()
+                cancelButton()
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+                val newSvg = alertBinding.editView.text?.toString().orEmpty().trim()
+                val savedSvg = when {
+                    newSvg.isBlank() -> ""
+                    isValidReviewIconSvg(newSvg) -> newSvg
+                    else -> {
+                        toastOnUi(R.string.review_icon_svg_invalid)
+                        return@setOnClickListener
+                    }
+                }
+                if (savedSvg != ReadBookConfig.reviewIconSvg) {
+                    ReadBookConfig.reviewIconSvg = savedSvg
+                    notifyReviewIconStyleChanged(relayout = true)
+                }
+                dialog.dismiss()
+            }
+        }
+        binding.tvReviewIconSize.setOnClickListener {
+            val alertBinding = DialogEditTextBinding.inflate(layoutInflater).apply {
+                editView.hint = getString(R.string.review_icon_size_hint)
+                editView.inputType = InputType.TYPE_CLASS_NUMBER
+                editView.setSingleLine(true)
+                editView.setText(ReadBookConfig.reviewIconScale.toString())
+                editView.setSelection(editView.text?.length ?: 0)
+            }
+            val dialog = alert(R.string.review_icon_size_title) {
+                customView { alertBinding.root }
+                okButton()
+                cancelButton()
+            }
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+                val newScale = alertBinding.editView.text?.toString().orEmpty().trim().toIntOrNull()
+                if (newScale == null || newScale !in 50..200) {
+                    toastOnUi(R.string.review_icon_size_invalid)
+                    return@setOnClickListener
+                }
+                if (newScale != ReadBookConfig.reviewIconScale) {
+                    ReadBookConfig.reviewIconScale = newScale
+                    notifyReviewIconStyleChanged(relayout = true)
+                }
+                dialog.dismiss()
+            }
         }
         binding.tvTextColor.setOnClickListener {
             ColorPickerDialog.newBuilder()
@@ -378,6 +438,21 @@ class BgTextConfigDialog : BaseDialogFragment(R.layout.dialog_read_bg_text) {
         }
     }
 
+    private fun notifyReviewIconStyleChanged(relayout: Boolean) {
+        ChapterProvider.clearReviewIconCache()
+        if (relayout) {
+            ChapterProvider.refreshReviewColumnsForStyleChange()
+        }
+        postEvent(EventBus.UP_CONFIG, arrayListOf(6, 9, 11))
+    }
+
+    private fun isValidReviewIconSvg(svg: String): Boolean {
+        val bitmap = SvgUtils.createBitmapFromSvgText(svg.replace("{{count}}", "88"), 48, 48)
+        return bitmap?.let {
+            it.recycle()
+            true
+        } ?: false
+    }
     private fun setBgFromUri(uri: Uri) {
         readUri(uri) { fileDoc, inputStream ->
             kotlin.runCatching {

@@ -1389,4 +1389,10 @@ Placeholders:
     <string name="review_collapse_replies">Collapse replies</string>
     <string name="review_play_audio">Play audio</string>
     <string name="review_pause_audio">Pause audio</string>
+    <string name="review_icon_svg_title">Paragraph comment icon SVG</string>
+    <string name="review_icon_svg_hint">&lt;svg ...&gt; use {{count}} as the count placeholder</string>
+    <string name="review_icon_svg_invalid">Invalid SVG. Please check the syntax and size definition.</string>
+    <string name="review_icon_size_title">Icon size</string>
+    <string name="review_icon_size_hint">Enter 50-200, where 100 is default</string>
+    <string name="review_icon_size_invalid">Please enter an integer between 50 and 200</string>
 </resources>

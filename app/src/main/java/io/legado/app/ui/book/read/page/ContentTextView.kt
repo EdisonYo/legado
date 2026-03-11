@@ -349,6 +349,18 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             val textPage = relativePage(relativePos)
             for ((lineIndex, textLine) in textPage.lines.withIndex()) {
                 if (textLine.isTouch(x, y, relativeOffset)) {
+                    val reviewIndex = textLine.columns.indexOfFirst {
+                        it is ReviewColumn && it.isTouch(x)
+                    }
+                    if (reviewIndex >= 0) {
+                        val reviewColumn = textLine.columns[reviewIndex]
+                        touched.invoke(
+                            relativeOffset,
+                            TextPos(relativePos, lineIndex, reviewIndex),
+                            textPage, textLine, reviewColumn
+                        )
+                        return
+                    }
                     for ((charIndex, textColumn) in textLine.columns.withIndex()) {
                         if (textColumn.isTouch(x)) {
                             touched.invoke(
