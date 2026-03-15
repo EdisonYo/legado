@@ -13,12 +13,12 @@
       @error.once="proxyImage"
       loading="lazy"
     />
-    <p v-else :style="{ fontFamily, fontSize }" v-html="para" @error.capture="handleImgLoadError" />
+    <p v-else :style="{ fontFamily, fontSize }" v-html="replaceImage(para)" @error.capture="handleImgLoadError" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { isLegadoUrl } from '@/utils/utils'
+import { isLegadoUrl, lazyRegex } from '@/utils/utils'
 import API from '@api'
 import jump from '@/plugins/jump'
 import type { webReadConfig } from '@/web'
@@ -36,14 +36,31 @@ const props = defineProps<{
   fontSize: string
 }>()
 
+const imgPatternStr = '<img[^>]*src=[\'"]([^\'"]*(?:[\'"][^>]+\\})?)[\'"][^>]*>'
+const imgPattern = lazyRegex(imgPatternStr)
+const imgPatternAll = lazyRegex(imgPatternStr, 'g')
+
+const replaceImage = (content: string) => {
+  return content.replace(imgPatternAll(), (match, src) => {
+    if (isLegadoUrl(src)) {
+      const proxySrc = API.getProxyImageUrl(
+        bookUrl.value,
+        src,
+        readWidth.value,
+      )
+      return match.replace(src, proxySrc)
+    }
+    return match
+  })
+}
+
 const getImageSrc = (content: string) => {
-  const imgPattern = /<img[^>]*src="([^"]*(?:"[^>]+\})?)"[^>]*>/
-  const src = content.match(imgPattern)![1] //reg tested in template
+  const src = content.match(imgPattern())![1] //reg tested in template
   if (isLegadoUrl(src))
     return API.getProxyImageUrl(
       bookUrl.value,
       src,
-      useBookStore().config.readWidth,
+      readWidth.value,
     )
   return src
 }
@@ -68,12 +85,16 @@ const proxyImage = (event: Event) => {
  * 处理传入的IMG标签错误事件，自动替换图片的代理链接
  */
 const handleImgLoadError = (event: Event) => {
-  if ((event.target as HTMLElement)?.tagName === "IMG") {
-    console.log("[ChapterContent]: IMG Load Error, replace src:",
-      (event.target as HTMLImageElement)?.getAttribute("src"), "=>",
+  const target = event.target
+  if (target instanceof HTMLImageElement) {
+    const srcUrl = target.getAttribute("src")
+    console.log(
+      "[ChapterContent]: IMG Load Error, replace src:",
+      srcUrl,
+      "=>",
       API.getProxyImageUrl(
         bookUrl.value,
-        (event.target as HTMLImageElement)?.getAttribute("src") ?? "",
+        srcUrl ?? "",
         readWidth.value,
       )
     )
@@ -82,10 +103,9 @@ const handleImgLoadError = (event: Event) => {
 }
 
 const calculateWordCount = (paragraph: string) => {
-  const imgPattern = /<img[^>]*src="[^"]*(?:"[^>]+\})?"[^>]*>/g
   //内嵌图片文字为1
   const imagePlaceHolder = ' '
-  return paragraph.replace(imgPattern, imagePlaceHolder).length
+  return paragraph.replace(imgPatternAll(), imagePlaceHolder).length
 }
 const chapterPos = computed(() => {
   let pos = -1
