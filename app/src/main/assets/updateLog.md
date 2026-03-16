@@ -7,6 +7,9 @@
 ## 更新日志
 ### [实时详细日志](https://gitee.com/lyc486/legado/commits/main)
 
+**2026/03/15**
+* [功能]：web端图片支持data:image/svg格式
+
 **2026/03/14**
 * [功能]：简介图片支持点击执行JS（click键），并支持长按查看大图
 
