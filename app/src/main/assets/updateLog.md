@@ -7,6 +7,12 @@
 ## 更新日志
 ### [实时详细日志](https://gitee.com/lyc486/legado/commits/main)
 
+**2026/03/18**
+* [功能]：usehtml支持<hr>分隔线标签
+
+**2026/03/17**
+* [功能]：净化规则支持调用java.put/get
+
 **2026/03/15**
 * [功能]：web端图片支持data:image/svg格式
 
