@@ -47,7 +47,7 @@
 * 调用阅读搜索  
 ```js
 * @param key 搜索关键词
-* @param searchScope 搜索作用域，为空时调用所以书源搜索
+* @param searchScope 搜索作用域，为空时调用所有书源搜索
 //searchScope作用域,形式为`源名称::源地址`、或者`,`符号隔开的源分组名称
 //在书源调用时可写为java.searchBook(key, source)，仅本书源进行搜索
 java.searchBook(key: String, searchScope: String? = null)
