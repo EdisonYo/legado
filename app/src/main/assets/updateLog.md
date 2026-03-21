@@ -8,6 +8,9 @@
 ### [实时详细日志](https://gitee.com/lyc486/legado/commits/main)
 
 **2026/03/19**
+* [功能]：视频播放页简介支持useweb标签
+
+**2026/03/19**
 * [功能]：简介规则支持useweb标签，通过webview渲染标准HTML
 
 **2026/03/18**
